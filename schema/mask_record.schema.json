@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "vidstg-masks/schema/mask_record.schema.json",
+  "title": "VidSTG relation mask record (one per vid, tid, fid)",
+  "description": "One line of records/<vid>.jsonl. A mask record has rle + mask_confidence; a refusal has rle null, mask_confidence null and a reason_code. Every record carries the full provenance set.",
+  "type": "object",
+  "required": [
+    "vid", "tid", "fid", "rle", "model", "checkpoint_hash", "sam_version", "prompt_mode",
+    "prompt_payload", "mask_confidence", "box_generated", "box_tracker", "split",
+    "code_commit", "created_at"
+  ],
+  "properties": {
+    "vid": {"type": "string", "minLength": 1, "description": "VidOR/VidSTG video id"},
+    "tid": {"type": "integer", "minimum": 0, "description": "VidOR trajectory id"},
+    "fid": {"type": "integer", "minimum": 0, "description": "native-fps frame index (decode order)"},
+    "rle": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["size", "counts"],
+          "properties": {
+            "size": {"type": "array", "minItems": 2, "maxItems": 2,
+                     "prefixItems": [{"type": "integer", "minimum": 1}, {"type": "integer", "minimum": 1}],
+                     "description": "[height, width]"},
+            "counts": {"type": "string", "minLength": 1, "description": "compressed COCO RLE (pycocotools)"}
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "model": {"const": "sam3.1-object-multiplex"},
+    "checkpoint_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "sam_version": {"const": "3.1"},
+    "prompt_mode": {"enum": ["pvs_box_multianchor", "pvs_box_hqanchor"]},
+    "prompt_payload": {
+      "type": "object",
+      "required": ["anchor_fids", "ref_anchor_fid", "anchor_policy"],
+      "properties": {
+        "anchor_fids": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+        "ref_anchor_fid": {"type": ["integer", "null"]},
+        "anchor_policy": {"enum": ["human", "human_gap", "hq"]},
+        "hq": {"type": ["object", "null"], "description": "hq policy only: keyframe gate results"},
+        "gap": {"type": ["object", "null"], "description": "human_gap policy only: coverage-rule results (max_gap, gap_fill, gap_fills, n_gap_fills, baseline_fids); null for an object never prompted"},
+        "contained_negatives": {"type": ["object", "null"], "description": "--contained-negatives only: neg_clicks per frame, co_prompt_fids, co_prompt_tracker_fids, n_neg_clicks; null for an object never prompted"}
+      }
+    },
+    "mask_confidence": {"type": ["number", "null"], "description": "sigmoid of the per-frame tracker score; 1.0 on prompted frames; uncalibrated; null on refusals"},
+    "box_generated": {"enum": [0, 1], "description": "VidOR per-box flag: 0 human keyframe, 1 tracker box (propagated, never reconstructed)"},
+    "box_tracker": {"type": "string", "description": "VidOR per-box tracker name ('none' for human boxes)"},
+    "split": {"enum": ["train", "val", "test"], "description": "VidSTG annotation file the video belongs to"},
+    "code_commit": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "description": "UTC ISO-8601"},
+    "reason_code": {
+      "enum": ["empty_mask", "no_human_keyframe", "no_hq_anchor", "frame_count_mismatch",
+               "frame_size_mismatch", "decode_black", "too_many_objects", "video_missing"]
+    }
+  },
+  "allOf": [
+    {"if": {"properties": {"rle": {"type": "null"}}},
+     "then": {"required": ["reason_code"], "properties": {"mask_confidence": {"type": "null"}}},
+     "else": {"not": {"required": ["reason_code"]}, "properties": {"mask_confidence": {"type": "number"}}}}
+  ]
+}

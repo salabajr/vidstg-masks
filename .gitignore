@@ -1,0 +1,15 @@
+.venv/
+external/
+checkpoints/
+outputs/
+*.pt
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.env
+.cache/
+slurm_logs/
+*.out
+*.err
+*.parquet

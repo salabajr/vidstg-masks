@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vidstg-masks"
+version = "0.1.0"
+description = "SAM 3.1 mask tracks for the subject and object of every VidSTG relation, with provenance and a refusal path"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26,<2",
+  "opencv-python-headless>=4.9",
+  "pycocotools>=2.0.7",
+  "pyarrow>=16",
+  "huggingface_hub>=0.24",
+  "setuptools>=68",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+vidstg-masks = "vidstg_masks.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

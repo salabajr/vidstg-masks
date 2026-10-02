@@ -359,6 +359,30 @@ def _tracklet_row(rec: dict, t: dict | None, tid: int, role: str, identity: str 
                 masks_rle_json=json.dumps(t["masks"] if t else [None] * len(rec["frame_ids"])))
 
 
+def table_rows(rec: dict) -> dict:
+    """The samples / verification / links rows of one validated record (their layouts)."""
+    common = dict(sample_id=rec["sample_id"], dataset=rec["dataset"], split=rec["split"],
+                  cohort=rec["cohort"], annotation_protocol=rec["annotation_protocol"],
+                  provenance_warning=rec["provenance_warning"], dataset_root="",
+                  frame_source="vidor_video", video_id=rec["video_id"],
+                  expression_id=rec["expression_id"], text=rec["text"], negative=False,
+                  target_source=SOURCE, disposition=rec["disposition"],
+                  frame_ids_json=json.dumps(rec["frame_ids"]),
+                  frame_files_json=json.dumps(rec["frame_files"]),
+                  span_links_json=json.dumps(rec["span_links"]),
+                  extraction_json=json.dumps(rec["extraction"]),
+                  sam_prompt_audit_json=json.dumps(rec["sam_prompt_audit"]), runtime_seconds=0.0)
+    return dict(
+        samples=dict(common, frame_count=len(rec["frame_ids"]), tracklet_count=len(rec["tracklets"]),
+                     unresolved_context_count=len(rec["vidstg_refused_tracklets"]),
+                     pipeline_json=json.dumps(rec["pipeline"])),
+        verification=dict(common, tracklets_json=json.dumps(rec["tracklets"]),
+                          groups_json=json.dumps(rec["groups"])),
+        links=[dict(sample_id=rec["sample_id"], text=rec["text"], span_start=link["start"],
+                    span_end=link["end"], span_text=link["text"],
+                    tracklet_ids_json=json.dumps(link["tracklet_ids"])) for link in rec["span_links"]])
+
+
 def export_concor(worklist_path: Path, campaign_root: Path, output_dir: Path | None = None,
                   captions_path: Path | None = None) -> dict:
     """Every done clip of a campaign -> <output_dir>/{records/<sample_id>.json (captioned
@@ -407,27 +431,11 @@ def export_concor(worklist_path: Path, campaign_root: Path, output_dir: Path | N
                 n_valid += 1
                 disp[rec["disposition"]] += 1
                 write_json_atomic(out / "records" / f"{rec['sample_id'].replace(':', '_')}.json", rec)
-                common = dict(sample_id=rec["sample_id"], dataset=rec["dataset"], split=rec["split"],
-                              cohort=rec["cohort"], annotation_protocol=rec["annotation_protocol"],
-                              provenance_warning=rec["provenance_warning"], dataset_root="",
-                              frame_source="vidor_video", video_id=rec["video_id"],
-                              expression_id=rec["expression_id"], text=rec["text"], negative=False,
-                              target_source=SOURCE, disposition=rec["disposition"],
-                              frame_ids_json=json.dumps(rec["frame_ids"]),
-                              frame_files_json=json.dumps(rec["frame_files"]),
-                              span_links_json=json.dumps(rec["span_links"]),
-                              extraction_json=json.dumps(rec["extraction"]),
-                              sam_prompt_audit_json=json.dumps(rec["sam_prompt_audit"]), runtime_seconds=0.0)
-                sinks["samples"].append(dict(common, frame_count=len(rec["frame_ids"]),
-                                             tracklet_count=len(rec["tracklets"]),
-                                             unresolved_context_count=len(rec["vidstg_refused_tracklets"]),
-                                             pipeline_json=json.dumps(rec["pipeline"])))
-                sinks["verification"].append(dict(common, tracklets_json=json.dumps(rec["tracklets"]),
-                                                  groups_json=json.dumps(rec["groups"])))
-                for link in rec["span_links"]:
-                    sinks["links"].append(dict(sample_id=rec["sample_id"], text=rec["text"],
-                                               span_start=link["start"], span_end=link["end"],
-                                               span_text=link["text"], tracklet_ids_json=json.dumps(link["tracklet_ids"])))
+                rows_ = table_rows(rec)
+                sinks["samples"].append(rows_["samples"])
+                sinks["verification"].append(rows_["verification"])
+                for link in rows_["links"]:
+                    sinks["links"].append(link)
         for s_ in sinks.values():
             s_.commit()
     except BaseException:

@@ -40,7 +40,7 @@ Steps 1 to 4 need no GPU and take a few minutes on a login node.
 git clone https://github.com/salabajr/vidstg-masks.git && cd vidstg-masks
 INSTALL_GPU=0 bash scripts/setup.sh           # 1. virtual environment and the package, no torch
 source .venv/bin/activate
-pytest -q                                     # 2. 103 tests pass
+pytest -q                                     # 2. 111 tests pass
 cp .env.example .env && $EDITOR .env          # 3. your data roots
 set -a && source .env && set +a
 vidstg-masks doctor --skip-hash --skip-gpu-libs           # 4. checks the roots, ffmpeg, dataset counts

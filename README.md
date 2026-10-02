@@ -128,6 +128,16 @@ Flags: `--anchor-policy human_gap` (the default), `--max-gap 60`, `--contained-n
 keyframes by a quality gate; it did worse and is kept for comparison. The full description,
 the measurements and the per-record fields that record every choice: `docs/PIPELINE.md`.
 
+## Backward pass
+
+SAM remembers an object best just after a prompt, so a forward pass fails most often on the
+frames just before the next prompt. `--direction both` runs the same prompts a second time
+from the end of the clip and merges the two passes frame by frame: where only one pass has a
+mask it is taken, where both agree the forward mask is kept, and where they differ the mask
+with more of its pixels inside the VidOR box wins, flagged `disputed` when the two barely
+overlap (`--refuse-disputed` refuses those frames instead). Every record says which rule
+decided it. This doubles the GPU time. `--direction backward` runs the backward pass alone.
+
 ## Cost
 
 Measured on one RTX A5000 (24 GB), eager mode:

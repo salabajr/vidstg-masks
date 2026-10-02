@@ -149,3 +149,28 @@ def test_plan_cli_describes_gap_fills_and_contained_negatives(data, tmp_path, ca
     assert run(["plan", "--worklist", str(c / "worklist.json"), "--vids", VID_B, "--anchor-policy", "hq",
                 "--max-gap", "0", "--keep-span-edges"]) == 0
     assert "hq tid 0:" in capsys.readouterr().out
+
+
+def test_direction_flags_reach_the_worker(data, tmp_path, monkeypatch):
+    from vidstg_masks import worker
+    c = tmp_path / "camp"
+    assert run(["build-worklist", "--split", "val", "--campaign-root", str(c)]) == 0
+    seen = {}
+
+    def stub(*args, **kw):
+        seen.clear()
+        seen.update(kw, args=args)
+        return 0
+    monkeypatch.setattr(worker, "install_signal_handlers", lambda: None)
+    monkeypatch.setattr(worker, "process", stub)
+    monkeypatch.setattr(worker, "process_one_main", stub)
+    common = ["--worklist", str(c / "worklist.json"), "--campaign-root", str(c), "--checkpoint", str(c / "x.pt")]
+    assert run(["process", *common]) == 0                                  # default: one forward pass
+    assert (seen["direction"], seen["agree_iou"], seen["dispute_iou"], seen["refuse_disputed"]) == ("forward", 0.7, 0.3, False)
+    assert run(["process", *common, "--direction", "both", "--agree-iou", "0.8", "--dispute-iou", "0.2",
+                "--refuse-disputed"]) == 0
+    assert (seen["direction"], seen["agree_iou"], seen["dispute_iou"], seen["refuse_disputed"]) == ("both", 0.8, 0.2, True)
+    assert run(["process-one", *common, "--vid", VID_B, "--direction", "backward"]) == 0
+    assert seen["direction"] == "backward" and seen["refuse_disputed"] is False
+    with pytest.raises(SystemExit):
+        cli.main(["process", *common, "--direction", "sideways"])

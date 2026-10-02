@@ -146,9 +146,9 @@ def test_clip_records_masks_and_refusals(roots, base_prov):
     by = {(r["tid"], r["fid"]): r for r in recs}
     assert by[(0, 3)]["rle"]["size"] == [48, 64] and by[(0, 3)]["mask_confidence"] == 0.9
     assert by[(1, 5)]["reason_code"] == "empty_mask"      # empty mask -> refusal
-    assert by[(0, 11)]["reason_code"] == "empty_mask"     # no output -> refusal
+    assert by[(0, 11)]["reason_code"] == "not_tracked"    # the pass never reached the frame -> refusal
     assert all(by[(2, f)]["reason_code"] == "no_human_keyframe" for f in range(12))
-    assert refusals == {"empty_mask": 3, "no_human_keyframe": 12}
+    assert refusals == {"empty_mask": 1, "not_tracked": 2, "no_human_keyframe": 12}
     assert by[(0, 3)]["prompt_payload"] == {"anchor_fids": [0, 4, 8], "ref_anchor_fid": 0, "anchor_policy": "human"}
     assert by[(0, 3)]["prompt_mode"] == "pvs_box_multianchor" and by[(0, 3)]["split"] == "train"
     assert by[(0, 4)]["box_generated"] == 0 and by[(0, 5)]["box_tracker"] == "kcf"
@@ -456,3 +456,118 @@ def test_run_clip_records_gap_fills_negatives_and_the_run_settings(roots, campai
     for r in d_recs:
         validate_record(r)
     assert campaign_status(load_worklist(campaign / "worklist.json"), campaign)["settings"] == [settings]
+
+
+class TwoPassFake:
+    """FakePredictor whose propagation output depends on the requested direction."""
+
+    def __init__(self, by_direction):
+        from conftest import FakePredictor
+        self._inner = FakePredictor()
+        self.by_direction = by_direction
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def handle_stream_request(self, request):
+        self._inner.requests.append(request)
+        outs = self.by_direction[request["propagation_direction"]]
+        for fid in sorted(outs):
+            yield {"frame_index": fid, "outputs": outs[fid]}
+
+
+def _outputs(masks: dict, probs=0.9):
+    ids = sorted(masks)
+    return {"out_obj_ids": ids, "out_binary_masks": [masks[i] for i in ids],
+            "out_probs": [probs] * len(ids)}
+
+
+def test_run_clip_both_directions_merges_and_records_the_rule(roots, campaign, monkeypatch):
+    """--direction both: a forward and a backward session with the same prompts, merged frame
+    by frame; every record says which pass it came from and why."""
+    from vidstg_masks import sam_session as ss
+    from vidstg_masks.worker import run_clip
+    unit = next(u for u in load_worklist(campaign / "worklist.json")["units"] if u["vid"] == VID_B)
+    plan, _ = plan_unit(unit, roots, 16, "human")
+    tids = [t for t in plan["tids"] if plan["anchors"][t] is not None]
+    assert len(tids) == 2
+    t0, t1 = tids
+    s0, s1 = plan["prop_span"]
+    n = s1 - s0 + 1
+    H, W = plan["H"], plan["W"]
+    b = plan["boxes"][t1][s0 + 7]["bbox"]
+    a = np.zeros((H, W), bool)                                   # the object: inside its own box
+    a[int(b["ymin"]):int(b["ymax"]) + 1, int(b["xmin"]):int(b["xmax"]) + 1] = True
+    half = (int(b["xmax"]) - int(b["xmin"]) + 1) // 2
+    shifted = np.zeros((H, W), bool)                             # the object moved half a box to the right
+    shifted[int(b["ymin"]):int(b["ymax"]) + 1, int(b["xmin"]) + half:min(W, int(b["xmax"]) + 1 + half)] = True
+    far = np.zeros((H, W), bool)
+    far[0:2, 0:2] = True
+    empty = np.zeros((H, W), bool)
+    fwd = {s0 + i: _outputs({t0: a, t1: a}) for i in range(n - 1)}  # the forward pass stops short of the span end
+    fwd[s0 + 5] = _outputs({t0: a, t1: empty})                   # forward lost t1 at frame 5
+    fwd[s0 + 7] = _outputs({t0: a, t1: shifted})                 # forward half off the box at frame 7
+    fwd[s0 + 9] = _outputs({t0: a, t1: far})                     # forward on something else at frame 9
+    bwd = {s0 + i: _outputs({t0: a, t1: a}, 0.8) for i in range(1, n)}  # the backward pass never predicts the span start
+    monkeypatch.setattr(ss, "assert_checkpoint", lambda p: "c" * 64)
+    monkeypatch.setattr(ss, "build_predictor", lambda checkpoint, n_obj: TwoPassFake(dict(forward=fwd, backward=bwd)))
+    monkeypatch.setattr(ss, "set_offload", lambda enabled: None)
+    monkeypatch.setattr(ss, "cuda_reset_peak", lambda: None)
+    monkeypatch.setattr(ss, "cuda_peak_gb", lambda: 0.0)
+    calls = []
+
+    def scores(predictor, sid):                                  # forward session 0.9, backward 0.8
+        calls.append(1)
+        return {(f, t): (0.9 if len(calls) % 2 == 1 else 0.8) for f in range(s0, s1 + 1) for t in (t0, t1)}
+    monkeypatch.setattr(ss, "collect_sam2_scores", scores)
+    run = run_clip(unit, roots, campaign, campaign / "ckpt.pt", "human", 16, verbose=False,
+                   contained_negatives=False, direction="both")
+    assert run["status"] == "done" and run["direction"] == "both" and run["frames"] == 2 * n - 2
+    assert (run["agree_iou"], run["dispute_iou"], run["refuse_disputed"]) == (0.7, 0.3, False)
+    recs = list(read_jsonl(campaign / "records" / f"{VID_B}.jsonl"))
+    by = {(r["tid"], r["fid"]): r for r in recs}
+    rule = {k: r["prompt_payload"]["merge"]["rule"] for k, r in by.items() if r["prompt_payload"].get("merge")}
+    assert by[(t0, s0 + 3)]["prompt_payload"]["direction"] == "bidirectional"
+    assert rule[(t0, s0)] == "forward_only" and rule[(t0, s1)] == "backward_only"
+    assert rule[(t1, s0 + 5)] == "backward_only" and by[(t1, s0 + 5)]["rle"] is not None
+    assert by[(t1, s0 + 5)]["mask_confidence"] == 0.8           # the backward pass's own confidence
+    assert rule[(t1, s0 + 7)] == "tiebreak" and by[(t1, s0 + 7)]["prompt_payload"]["merge"]["source"] == "backward"
+    assert rule[(t1, s0 + 9)] == "disputed" and by[(t1, s0 + 9)]["prompt_payload"]["merge"]["disputed"] is True
+    assert rule[(t0, s0 + 3)] == "agree" and by[(t0, s0 + 3)]["mask_confidence"] == 0.9   # forward kept
+    assert run["merge"] == {"agree": 2 * n - 7, "forward_only": 2, "backward_only": 3, "tiebreak": 1, "disputed": 1}
+    for r in recs:
+        validate_record(r)
+    # the refusal variant turns the disputed frame into a disputed_mask refusal
+    run = run_clip(unit, roots, campaign, campaign / "ckpt.pt", "human", 16, verbose=False,
+                   contained_negatives=False, direction="both", refuse_disputed=True)
+    recs = list(read_jsonl(campaign / "records" / f"{VID_B}.jsonl"))
+    by = {(r["tid"], r["fid"]): r for r in recs}
+    assert by[(t1, s0 + 9)]["reason_code"] == "disputed_mask" and by[(t1, s0 + 9)]["rle"] is None
+    assert by[(t1, s0 + 9)]["prompt_payload"]["merge"]["rule"] == "disputed_refused"
+    assert run["refusals"]["disputed_mask"] == 1 and run["merge"]["disputed_refused"] == 1
+    for r in recs:
+        validate_record(r)
+
+
+def test_run_clip_backward_alone_records_the_direction(roots, campaign, monkeypatch):
+    from conftest import FakePredictor
+    from vidstg_masks import sam_session as ss
+    from vidstg_masks.worker import run_clip
+    unit = next(u for u in load_worklist(campaign / "worklist.json")["units"] if u["vid"] == VID_B)
+    pred = FakePredictor()
+    monkeypatch.setattr(ss, "assert_checkpoint", lambda p: "c" * 64)
+    monkeypatch.setattr(ss, "build_predictor", lambda checkpoint, n_obj: pred)
+    monkeypatch.setattr(ss, "set_offload", lambda enabled: None)
+    monkeypatch.setattr(ss, "cuda_reset_peak", lambda: None)
+    monkeypatch.setattr(ss, "cuda_peak_gb", lambda: 0.0)
+    monkeypatch.setattr(ss, "collect_sam2_scores", lambda predictor, sid: {})
+    run = run_clip(unit, roots, campaign, campaign / "ckpt.pt", "human", 16, verbose=False,
+                   contained_negatives=False, direction="backward")
+    prop = [r for r in pred.requests if r["type"] == "propagate_in_video"]
+    assert len(prop) == 1 and prop[0]["propagation_direction"] == "backward"
+    assert prop[0]["start_frame_index"] == run["prop_span"][1]
+    recs = list(read_jsonl(campaign / "records" / f"{VID_B}.jsonl"))
+    assert recs and all(r["prompt_payload"]["direction"] == "backward" for r in recs)
+    assert all(r["reason_code"] == "empty_mask" for r in recs if r["prompt_payload"]["anchor_fids"])  # the fake predicted nothing
+    with pytest.raises(ValueError):
+        run_clip(unit, roots, campaign, campaign / "ckpt.pt", "human", 16, verbose=False, direction="sideways")

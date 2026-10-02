@@ -31,7 +31,11 @@ REASON_CODES = (
     "decode_black",          # video decodes as black frames under cv2 (VP6F class); transcode
     "too_many_objects",      # > MAX_OBJECTS relation tids in the clip
     "video_missing",         # no file at <video_root>/<video_path>
+    "not_tracked",           # the pass never predicted this frame (the span-end frame of a backward pass)
+    "disputed_mask",         # forward and backward passes disagree and the merge refuses (rule 7)
 )
+DIRECTIONS = ("forward", "backward", "both")          # --direction; a merged record says "bidirectional"
+PAYLOAD_DIRECTIONS = ("forward", "backward", "bidirectional")
 CLIP_REASON_CODES = ("frame_count_mismatch", "frame_size_mismatch", "decode_black",
                      "too_many_objects", "video_missing")
 PROMPT_MODES = ("pvs_box_multianchor", "pvs_box_hqanchor")
@@ -182,6 +186,10 @@ def validate_record(rec: dict) -> None:
     if cn is not None and not isinstance(cn, dict):
         raise ValueError("prompt_payload.contained_negatives must be a dict (or null for an "
                          "object that was never prompted)")
+    if "direction" in pp and pp["direction"] not in PAYLOAD_DIRECTIONS:
+        raise ValueError(f"prompt_payload.direction must be one of {PAYLOAD_DIRECTIONS}")
+    if pp.get("direction") == "bidirectional" and not isinstance(pp.get("merge"), dict):
+        raise ValueError("a bidirectional record carries prompt_payload.merge (the rule applied)")
     if rec["box_generated"] not in (0, 1) or isinstance(rec["box_generated"], bool):
         raise ValueError("box_generated must be 0 (human) or 1 (tracker)")
     if rec["split"] not in SPLITS:

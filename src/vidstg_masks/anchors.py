@@ -271,7 +271,7 @@ def describe_plan(plan: dict, video: Path | None = None) -> str:
              f"   relations ({len(p['relations'])}): "
              + " | ".join(f"{s} {pr} {o}" for s, pr, o in p["relations"]),
              f"   segment union {list(p['seg'])} -> propagation span "
-             f"{list(p['prop_span'])} (~{n_prop} frames, forward-only)"]
+             f"{list(p['prop_span'])} (~{n_prop} frames)"]
     for t in p["tids"]:
         a, cat = p["anchors"][t], p["cats"].get(t, "?")
         if a is None:

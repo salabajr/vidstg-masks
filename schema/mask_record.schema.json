@@ -53,7 +53,8 @@
     "created_at": {"type": "string", "description": "UTC ISO-8601"},
     "reason_code": {
       "enum": ["empty_mask", "no_human_keyframe", "no_hq_anchor", "frame_count_mismatch",
-               "frame_size_mismatch", "decode_black", "too_many_objects", "video_missing"]
+               "frame_size_mismatch", "decode_black", "too_many_objects", "video_missing",
+               "not_tracked", "disputed_mask"]
     }
   },
   "allOf": [

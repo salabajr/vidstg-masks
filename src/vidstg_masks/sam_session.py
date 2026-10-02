@@ -14,6 +14,11 @@ regenerate byte-for-byte against existing runs:
    add_prompt on one (object, frame) replaces the earlier points rather than appending)
   purge_prompt_buffers(keep=None)
   propagate_in_video(forward, start_frame_index=start, max_frame_num_to_track=end-start+1)
+  (direction="backward": propagation_direction=backward, start_frame_index=end, same count:
+   SAM 3.1 runs a reverse pass from start_frame_index - 1 downwards and bounds the detector
+   window to [start - count + 1, start], so this predicts end-1 .. start; the span-end frame
+   is not re-predicted. A second pass inside one session only re-runs objects with new
+   prompts, so a backward pass is its own session with the same prompts.)
   collect_sam2_scores()  -> per-frame confidence, BEFORE close_session
   close_session          (in a finally: an orphaned session pins its VRAM)
 """
@@ -96,12 +101,16 @@ def masks_probs_of(outputs) -> dict[int, tuple[np.ndarray, float]]:
 
 
 def run_session(predictor, video_path, prompts: dict[int, list[tuple]],
-                start: int, end: int) -> tuple[dict, float]:
+                start: int, end: int, direction: str = "forward") -> tuple[dict, float]:
     """prompts: {obj_id: [entry, ...]} with the reference anchor FIRST, where an entry is
     (fid, [x0, y0, x1, y1]) or (fid, [x0, y0, x1, y1], pts, labels): pts a list of [x, y] in
     the same relative (0-1) frame coordinates as the box, labels ints in {1: positive click,
     0: negative click} (anchors.add_contained_negatives). A 2-tuple entry sends exactly the
-    request it always did. Returns ({fid: {obj_id: (mask, confidence)}}, wall seconds)."""
+    request it always did. `direction` "forward" propagates from `start`, "backward" from
+    `end` (see the module docstring). Returns ({fid: {obj_id: (mask, confidence)}}, wall
+    seconds)."""
+    if direction not in ("forward", "backward"):
+        raise ValueError(f"direction must be forward or backward, got {direction!r}")
     t0 = time.perf_counter()
     sid = predictor.handle_request(request=dict(
         type="start_session", resource_path=str(video_path),
@@ -142,8 +151,8 @@ def run_session(predictor, video_path, prompts: dict[int, list[tuple]],
         per_frame: dict[int, dict] = {}
         for resp in predictor.handle_stream_request(request=dict(
                 type="propagate_in_video", session_id=sid,
-                propagation_direction="forward",
-                start_frame_index=start,
+                propagation_direction=direction,
+                start_frame_index=start if direction == "forward" else end,
                 max_frame_num_to_track=end - start + 1)):
             per_frame[resp["frame_index"]] = masks_probs_of(resp["outputs"])
         scores = collect_sam2_scores(predictor, sid)

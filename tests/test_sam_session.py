@@ -106,3 +106,19 @@ def test_prompt_encoder_cap_and_click_shape_are_asserted(fake_predictor_cls, no_
         ss.run_session(pred, "v.mp4", {1: [(0, BOX, [[0.5, 0.5]], [2])]}, 0, 5)
     at_cap = [[0.5, 0.5]] * (ss.MAX_PROMPT_POINTS - 2)              # exactly the cap is fine
     ss.run_session(fake_predictor_cls(), "v.mp4", {1: [(0, BOX, at_cap, [1] * len(at_cap))]}, 0, 5)
+
+
+def test_backward_pass_request(fake_predictor_cls, no_scores):
+    """A backward pass is the same prompt sequence with propagation_direction backward from
+    the span end (SAM 3.1 predicts end-1 .. start from there); other directions are refused
+    here, `both` being the worker's business (two sessions)."""
+    pred = fake_predictor_cls()
+    prompts = {7: [(10, BOX), (20, BOX)], 3: [(2, BOX2)]}
+    ss.run_session(pred, "v.mp4", prompts, 4, 30, direction="backward")
+    assert pred.adds() == [add_request(7, 10, BOX), add_request(3, 2, BOX2), add_request(7, 20, BOX)]
+    assert pred.requests[-2] == dict(type="propagate_in_video", session_id="S",
+                                     propagation_direction="backward", start_frame_index=30,
+                                     max_frame_num_to_track=27)
+    assert pred.requests[-1] == dict(type="close_session", session_id="S")
+    with pytest.raises(ValueError):
+        ss.run_session(fake_predictor_cls(), "v.mp4", prompts, 4, 30, direction="both")

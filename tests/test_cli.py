@@ -165,12 +165,12 @@ def test_direction_flags_reach_the_worker(data, tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "process", stub)
     monkeypatch.setattr(worker, "process_one_main", stub)
     common = ["--worklist", str(c / "worklist.json"), "--campaign-root", str(c), "--checkpoint", str(c / "x.pt")]
-    assert run(["process", *common]) == 0                                  # default: one forward pass
-    assert (seen["direction"], seen["agree_iou"], seen["dispute_iou"], seen["refuse_disputed"]) == ("forward", 0.7, 0.3, False)
-    assert run(["process", *common, "--direction", "both", "--agree-iou", "0.8", "--dispute-iou", "0.2",
-                "--refuse-disputed"]) == 0
-    assert (seen["direction"], seen["agree_iou"], seen["dispute_iou"], seen["refuse_disputed"]) == ("both", 0.8, 0.2, True)
+    assert run(["process", *common]) == 0                                  # default: both passes, merged
+    assert (seen["direction"], seen["agree_iou"], seen["speck_floor"], seen["speck_ratio"]) == ("both", 0.3, 20, 0.1)
+    assert run(["process", *common, "--direction", "forward", "--agree-iou", "0.8", "--speck-floor", "30",
+                "--speck-ratio", "0.2"]) == 0
+    assert (seen["direction"], seen["agree_iou"], seen["speck_floor"], seen["speck_ratio"]) == ("forward", 0.8, 30, 0.2)
     assert run(["process-one", *common, "--vid", VID_B, "--direction", "backward"]) == 0
-    assert seen["direction"] == "backward" and seen["refuse_disputed"] is False
+    assert seen["direction"] == "backward" and seen["speck_floor"] == 20
     with pytest.raises(SystemExit):
         cli.main(["process", *common, "--direction", "sideways"])

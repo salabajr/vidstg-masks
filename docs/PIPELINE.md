@@ -93,22 +93,42 @@ State offload (tracker outputs on the CPU) is switched on when the propagation s
 1,500 frames or frames x objects exceeds 2,500; it costs 10-15% speed and avoids OOM on
 24 GB. A clip that still OOMs is retried once with offload forced on.
 
-### Backward pass (`--direction`)
+### Backward pass and the merge (`--direction`)
 
 SAM's memory is freshest just after an anchor, so a forward pass fails most often on the
 frames just before the next anchor. `--direction backward` runs the same prompts from the
 span end in its own session (a second propagation inside one session only re-runs objects
 with new prompts, so it has to be a new session); SAM 3.1 then predicts the frames from the
 span end minus one down to the span start, and the span-end frame is recorded as `not_tracked`.
-`--direction both` runs the forward pass, keeps it as RLE, runs the backward pass and merges
-them frame by frame (`merge.merge_passes`): one pass only, take it; both and the overlap is at
-or above `--agree-iou` (0.7), keep the forward mask; below it, keep the mask with the larger
-share of its pixels inside the VidOR box (equal shares: the larger mask); below `--dispute-iou`
-(0.3) the frame is flagged `disputed`, or refused with `disputed_mask` under `--refuse-disputed`.
-Every record of a `both` run says `direction: bidirectional` and carries the rule applied in
-`prompt_payload.merge`. `both` costs twice the GPU time of `forward`. On the 20 review clips
-of the research run the measured gains and the chosen thresholds are in the research reports
-(`reports/bidirectional_merge.md` there); the defaults here are the proposal they started from.
+
+`--direction both` (the default) runs the forward pass, keeps it as RLE, runs the backward
+pass and merges them frame by frame (`merge.merge_passes`, the pixels rule; no box is used):
+
+1. Each object's two candidates are read. A mask under `--speck-floor` pixels (20) is no mask.
+   With two real masks, one under `--speck-ratio` (0.1) of the other is no mask. If one pass is
+   left, it is the only candidate: a strong vote. If both are left and their overlap is at or
+   above `--agree-iou` (0.3), the masks mostly match: the forward one is preferred, either is
+   allowed (a weak vote). If both are left and they do not overlap, the frame is a dispute and
+   is refused (`disputed_mask`, rule 7). Nothing real in either pass is `empty_mask` (both empty)
+   or `speck_mask`.
+2. The objects of a frame are decided together. Each takes its candidate; every pixel that two
+   written masks share goes to the object whose pass was the only candidate, and the object that
+   merely preferred forward loses those pixels (its own backward mask, from the winner's pass,
+   also leaves them out). Two strong votes from different passes on the same pixels refuse both
+   objects (`passes_conflict`). A trimmed mask that falls under the floor takes the object's
+   backward mask when that touches nothing written, else it is refused (`handed_over_speck`).
+   Inside one pass SAM gives a pixel to one object only, so after the handover no two written
+   masks share a pixel.
+
+Every record of a `both` run says `direction: bidirectional` and carries `prompt_payload.merge`:
+the reading (`rule`), the `decision` (`forward`, `backward`, `refused`, `none`), the `source`
+pass, the overlap of the two masks, each candidate's size, share inside the VidOR box (for the
+reader; unused) and confidence, the `handover` when pixels moved, the `refused_reason`, and the
+thresholds. `both` costs twice the GPU time of `forward`. On the 20 review clips of the
+research run (69,729 object-frames): 217 refusals, 222 object-frames with nothing real in
+either pass, 176 masks from the backward pass, 180 masks trimmed, no two masks sharing a pixel;
+the earlier per-object rule with a box tie-break had left 282 overlapping pairs and taken
+one-pixel masks (`reports/merge_rules_v2.md` there).
 
 ## Records (`worker.clip_records`)
 

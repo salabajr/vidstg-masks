@@ -28,17 +28,18 @@ def _add_campaign(p: argparse.ArgumentParser) -> None:
 
 
 def _add_policy(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--direction", choices=("forward", "backward", "both"), default="forward",
-                   help="forward (default): one SAM pass from the span start. backward: one pass "
-                        "from the span end. both: the two passes in turn, merged frame by frame "
-                        "(docs/PIPELINE.md, Backward pass); twice the GPU time")
-    p.add_argument("--agree-iou", type=float, default=0.7,
-                   help="both: overlap at or above which the passes agree and the forward mask is kept")
-    p.add_argument("--dispute-iou", type=float, default=0.3,
-                   help="both: overlap below which the frame is flagged disputed")
-    p.add_argument("--refuse-disputed", action="store_true",
-                   help="both: refuse disputed frames (reason disputed_mask) instead of choosing "
-                        "the mask with the larger share inside the VidOR box")
+    p.add_argument("--direction", choices=("forward", "backward", "both"), default="both",
+                   help="both (default): a SAM pass from the span start and one from the span end, "
+                        "merged frame by frame by the pixels rule (docs/PIPELINE.md, Backward pass); "
+                        "twice the GPU time of forward. forward: the one pass from the span start. "
+                        "backward: the one pass from the span end")
+    p.add_argument("--agree-iou", type=float, default=0.3,
+                   help="both: overlap at or above which the two masks of an object mostly match "
+                        "(the forward one is preferred); below it the frame is a dispute and refused")
+    p.add_argument("--speck-floor", type=int, default=20,
+                   help="both: a mask under this many pixels is no mask")
+    p.add_argument("--speck-ratio", type=float, default=0.1,
+                   help="both: with two real masks, the one under this share of the other is no mask")
     p.add_argument("--anchor-policy", choices=ANCHOR_POLICIES, default="human_gap",
                    help="human_gap (default): the VidOR box at every human keyframe, capped by "
                         "--max-anchors, plus the coverage rule (--max-gap / --gap-fill), no "
@@ -327,8 +328,8 @@ def cmd_process(args) -> int:
                    roots_from_env=args.roots_from_env, max_gap=args.max_gap,
                    gap_fill=args.gap_fill, keep_span_edges=args.keep_span_edges,
                    contained_negatives=args.contained_negatives, direction=args.direction,
-                   agree_iou=args.agree_iou, dispute_iou=args.dispute_iou,
-                   refuse_disputed=args.refuse_disputed)
+                   agree_iou=args.agree_iou, speck_floor=args.speck_floor,
+                   speck_ratio=args.speck_ratio)
 
 
 def cmd_process_one(args) -> int:
@@ -342,8 +343,8 @@ def cmd_process_one(args) -> int:
                             max_gap=args.max_gap, gap_fill=args.gap_fill,
                             keep_span_edges=args.keep_span_edges,
                             contained_negatives=args.contained_negatives, direction=args.direction,
-                            agree_iou=args.agree_iou, dispute_iou=args.dispute_iou,
-                            refuse_disputed=args.refuse_disputed)
+                            agree_iou=args.agree_iou, speck_floor=args.speck_floor,
+                            speck_ratio=args.speck_ratio)
 
 
 def cmd_status(args) -> int:

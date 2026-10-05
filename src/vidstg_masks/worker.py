@@ -49,7 +49,7 @@ MAX_INTERRUPTIONS = 5     # a clip killed by a signal (walltime, preemption) is 
 # can tell how a campaign was run from its outputs alone.
 SETTINGS_KEYS = ("anchor_policy", "max_anchors", "hq_fallback", "max_gap", "gap_fill",
                  "keep_span_edges", "contained_negatives",
-                 "direction", "agree_iou", "dispute_iou", "refuse_disputed")
+                 "direction", "agree_iou", "speck_floor", "speck_ratio")
 
 STOP_REQUESTED = False
 
@@ -57,12 +57,12 @@ STOP_REQUESTED = False
 def run_settings(anchor_policy: str, max_anchors: int, hq_fallback: str = "least-flagged",
                  max_gap: int = 60, gap_fill: str = "human", keep_span_edges: bool = False,
                  contained_negatives: bool = False, direction: str = "forward",
-                 agree_iou: float = 0.7, dispute_iou: float = 0.3,
-                 refuse_disputed: bool = False) -> dict:
+                 agree_iou: float = 0.3, speck_floor: int = 20,
+                 speck_ratio: float = 0.1) -> dict:
     return dict(anchor_policy=anchor_policy, max_anchors=max_anchors, hq_fallback=hq_fallback,
                 max_gap=max_gap, gap_fill=gap_fill, keep_span_edges=keep_span_edges,
                 contained_negatives=contained_negatives, direction=direction,
-                agree_iou=agree_iou, dispute_iou=dispute_iou, refuse_disputed=refuse_disputed)
+                agree_iou=agree_iou, speck_floor=speck_floor, speck_ratio=speck_ratio)
 
 
 def request_stop(signum, _frame) -> None:
@@ -294,8 +294,9 @@ def clip_records(plan: dict, per_frame: dict | None, base_prov: dict,
     `neg_prov` (anchors.add_contained_negatives) goes into each object's payload as
     `contained_negatives`, and its co-prompt frames widen the payload's `anchor_fids`.
     `direction` is recorded in the payload; with `merge_prov` ({(tid, fid): merge.merge_frame
-    provenance}, a `--direction both` run) the payload says `bidirectional`, carries the
-    frame's `merge` block, and a `disputed_refused` frame is refused with `disputed_mask`."""
+    provenance}, a `--direction both` run) the payload says `bidirectional` and carries the
+    frame's `merge` block; a frame the merge refused carries its `refused_reason`, and a
+    frame with nothing real in either pass `empty_mask` (both empty) or `speck_mask`."""
     prompt_mode = PROMPT_MODES[plan["anchor_policy"]]
     out, refusals = [], Counter()
     for t in plan["tids"]:
@@ -327,8 +328,10 @@ def clip_records(plan: dict, per_frame: dict | None, base_prov: dict,
                 reason = clip_reason
             elif tid_reason is not None:
                 reason = tid_reason
-            elif mp is not None and mp["rule"] == "disputed_refused":
-                reason = "disputed_mask"
+            elif mp is not None and mp["decision"] == "refused":
+                reason = mp["refused_reason"]
+            elif mp is not None and mp["decision"] == "none":
+                reason = "empty_mask" if mp["forward"] is None and mp["backward"] is None else "speck_mask"
             else:
                 got = (per_frame or {}).get(fid, {}).get(t)
                 if got is None and merge_prov is None and per_frame and fid not in per_frame:
@@ -375,12 +378,12 @@ def run_clip(unit: dict, roots: Roots, campaign_root: Path, checkpoint: Path,
              hq_fallback: str = "least-flagged", verbose: bool = True,
              checkpoint_hash: str | None = None, max_gap: int = 60, gap_fill: str = "human",
              keep_span_edges: bool = False, contained_negatives: bool = False,
-             direction: str = "forward", agree_iou: float = 0.7, dispute_iou: float = 0.3,
-             refuse_disputed: bool = False) -> dict:
+             direction: str = "forward", agree_iou: float = 0.3, speck_floor: int = 20,
+             speck_ratio: float = 0.1) -> dict:
     """One clip end to end inside the current process: plan, precheck, SAM, records.
-    `direction`: forward (default) or backward, one pass; both = a forward and a backward
-    session with the same prompts, merged by merge.merge_passes with `agree_iou`,
-    `dispute_iou` and `refuse_disputed` (every record then carries the rule applied).
+    `direction`: forward or backward, one pass; both = a forward and a backward session
+    with the same prompts, merged by merge.merge_passes (the pixels rule: `agree_iou`,
+    `speck_floor`, `speck_ratio`; every record then carries what the merge did).
     `checkpoint_hash` is the sha256 the parent shard already verified (so the 3.5 GB file
     is hashed once per shard, not once per clip); without it the file is hashed here.
     `max_gap` / `gap_fill` / `keep_span_edges` are the coverage-rule settings of the
@@ -394,7 +397,7 @@ def run_clip(unit: dict, roots: Roots, campaign_root: Path, checkpoint: Path,
     d = campaign_dirs(campaign_root)
     settings = run_settings(anchor_policy, max_anchors, hq_fallback, max_gap, gap_fill,
                             keep_span_edges, contained_negatives, direction, agree_iou,
-                            dispute_iou, refuse_disputed)
+                            speck_floor, speck_ratio)
     plan, video = plan_unit(unit, roots, max_anchors, anchor_policy, apply_policy=False)
     reason, details = precheck_clip(plan, video)
     if checkpoint_hash is None:
@@ -440,7 +443,7 @@ def run_clip(unit: dict, roots: Roots, campaign_root: Path, checkpoint: Path,
             wall = wall_f + wall_b
             frames_run = len(fwd_rle) + len(bwd)
             per_frame, merge_prov, merge_rules = mg.merge_passes(
-                fwd_rle, bwd, plan, agree_iou, dispute_iou, refuse_disputed)
+                fwd_rle, bwd, plan, agree_iou, speck_floor, speck_ratio)
             if verbose:
                 print(f"   merge: {dict(merge_rules)}", flush=True)
         else:
@@ -471,8 +474,8 @@ def process_one_main(worklist_path: Path, vid: str, campaign_root: Path, checkpo
                      checkpoint_hash: str | None = None, roots: Roots | None = None,
                      max_gap: int = 60, gap_fill: str = "human", keep_span_edges: bool = False,
                      contained_negatives: bool = False, direction: str = "forward",
-                     agree_iou: float = 0.7, dispute_iou: float = 0.3,
-                     refuse_disputed: bool = False) -> int:
+                     agree_iou: float = 0.3, speck_floor: int = 20,
+                     speck_ratio: float = 0.1) -> int:
     """Entry point of the per-clip subprocess. Writes errors/<vid>.json on failure and
     exits EXIT_OOM for a CUDA OOM so the parent can retry with offload forced on.
     `roots`, when given (--roots-from-env), replaces the roots frozen in the worklist and
@@ -495,7 +498,7 @@ def process_one_main(worklist_path: Path, vid: str, campaign_root: Path, checkpo
                  force_offload, hq_fallback, checkpoint_hash=checkpoint_hash,
                  max_gap=max_gap, gap_fill=gap_fill, keep_span_edges=keep_span_edges,
                  contained_negatives=contained_negatives, direction=direction,
-                 agree_iou=agree_iou, dispute_iou=dispute_iou, refuse_disputed=refuse_disputed)
+                 agree_iou=agree_iou, speck_floor=speck_floor, speck_ratio=speck_ratio)
         (d["errors"] / f"{vid}.json").unlink(missing_ok=True)
         return 0
     except Exception as e:  # noqa: BLE001 - record, never drop
@@ -513,8 +516,8 @@ def subprocess_runner(worklist_path: Path, campaign_root: Path, checkpoint: Path
                       hq_fallback: str = "least-flagged", roots: Roots | None = None,
                       max_gap: int = 60, gap_fill: str = "human", keep_span_edges: bool = False,
                       contained_negatives: bool = False, direction: str = "forward",
-                      agree_iou: float = 0.7, dispute_iou: float = 0.3,
-                      refuse_disputed: bool = False):
+                      agree_iou: float = 0.3, speck_floor: int = 20,
+                      speck_ratio: float = 0.1):
     """Default clip runner: one fresh Python process per clip. The checkpoint is hashed
     once, before the first clip, and the hash handed to every child. `roots` (from
     --roots-from-env) is passed to the child as explicit root flags; the policy settings
@@ -539,9 +542,8 @@ def subprocess_runner(worklist_path: Path, campaign_root: Path, checkpoint: Path
         # sent either way: the child's own default is on, so a shard started with
         # --no-contained-negatives has to say so to every clip
         cmd.append("--contained-negatives" if contained_negatives else "--no-contained-negatives")
-        cmd += ["--direction", direction, "--agree-iou", str(agree_iou), "--dispute-iou", str(dispute_iou)]
-        if refuse_disputed:
-            cmd.append("--refuse-disputed")
+        cmd += ["--direction", direction, "--agree-iou", str(agree_iou),
+                "--speck-floor", str(speck_floor), "--speck-ratio", str(speck_ratio)]
         if force_offload:
             cmd.append("--force-offload")
         if roots is not None:
@@ -660,8 +662,8 @@ def process(worklist_path: Path, shard_index: int, shard_count: int, campaign_ro
             max_wait_seconds: float | None = None, hq_fallback: str = "least-flagged",
             roots_from_env: bool = False, max_gap: int = 60, gap_fill: str = "human",
             keep_span_edges: bool = False, contained_negatives: bool = False,
-            direction: str = "forward", agree_iou: float = 0.7, dispute_iou: float = 0.3,
-            refuse_disputed: bool = False) -> int:
+            direction: str = "forward", agree_iou: float = 0.3, speck_floor: int = 20,
+            speck_ratio: float = 0.1) -> int:
     """Shard worker: walk the worklist from this shard's offset, claim each pending clip
     and run it. Returns 0 when nothing is left for this shard, 99 when drained by a signal
     (Slurm requeue), 1 when a clip failed terminally. While other shards hold the remaining
@@ -674,7 +676,7 @@ def process(worklist_path: Path, shard_index: int, shard_count: int, campaign_ro
     thresholds of a `both` run."""
     settings = run_settings(anchor_policy, max_anchors, hq_fallback, max_gap, gap_fill,
                             keep_span_edges, contained_negatives, direction, agree_iou,
-                            dispute_iou, refuse_disputed)
+                            speck_floor, speck_ratio)
     wl = load_worklist(worklist_path)
     wl_roots = Roots.from_dict(wl["roots"])
     units = wl["units"]
@@ -695,7 +697,7 @@ def process(worklist_path: Path, shard_index: int, shard_count: int, campaign_ro
                                         max_anchors, python, hq_fallback,
                                         roots if roots_from_env else None, max_gap, gap_fill,
                                         keep_span_edges, contained_negatives, direction,
-                                        agree_iou, dispute_iou, refuse_disputed)
+                                        agree_iou, speck_floor, speck_ratio)
     order = shard_order(units, shard_index, shard_count)
     job = os.environ.get("SLURM_ARRAY_JOB_ID") or os.environ.get("SLURM_JOB_ID")
     task = os.environ.get("SLURM_ARRAY_TASK_ID", str(shard_index))

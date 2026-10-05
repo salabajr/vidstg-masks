@@ -40,7 +40,7 @@ Steps 1 to 4 need no GPU and take a few minutes on a login node.
 git clone https://github.com/salabajr/vidstg-masks.git && cd vidstg-masks
 INSTALL_GPU=0 bash scripts/setup.sh           # 1. virtual environment and the package, no torch
 source .venv/bin/activate
-pytest -q                                     # 2. 111 tests pass
+pytest -q                                     # 2. 114 tests pass
 cp .env.example .env && $EDITOR .env          # 3. your data roots
 set -a && source .env && set +a
 vidstg-masks doctor --skip-hash --skip-gpu-libs           # 4. checks the roots, ffmpeg, dataset counts
@@ -61,7 +61,8 @@ vidstg-masks render --vid 7639717122 --campaign-root outputs/smoke     # overlay
 ```
 
 This clip has 9 relations and 5 objects. You should see 507 masks and no refusals, about
-half a second per frame once the model is loaded, and `export` reporting `"ok": true`.
+half a second per frame and pass once the model is loaded (the default runs two passes), and
+`export` reporting `"ok": true`.
 
 The setup script keeps pip and Hugging Face caches inside the repository (or under
 `VIDSTG_MASKS_CACHE_ROOT`), not in your home directory, which is often quota-limited on a
@@ -128,15 +129,23 @@ Flags: `--anchor-policy human_gap` (the default), `--max-gap 60`, `--contained-n
 keyframes by a quality gate; it did worse and is kept for comparison. The full description,
 the measurements and the per-record fields that record every choice: `docs/PIPELINE.md`.
 
-## Backward pass
+## Backward pass and the merge
 
 SAM remembers an object best just after a prompt, so a forward pass fails most often on the
-frames just before the next prompt. `--direction both` runs the same prompts a second time
-from the end of the clip and merges the two passes frame by frame: where only one pass has a
-mask it is taken, where both agree the forward mask is kept, and where they differ the mask
-with more of its pixels inside the VidOR box wins, flagged `disputed` when the two barely
-overlap (`--refuse-disputed` refuses those frames instead). Every record says which rule
-decided it. This doubles the GPU time. `--direction backward` runs the backward pass alone.
+frames just before the next prompt. By default (`--direction both`) the same prompts are run a
+second time from the end of the clip and the two passes are merged frame by frame by a rule
+that looks at no box. A mask under 20 pixels is no mask, and so is a real mask under a tenth
+of the other pass's mask for the same object. Where only one pass is left with a mask, that
+mask is taken. Where both are left and they mostly overlap, the forward mask is kept. Where
+both are left and they do not overlap, the frame is refused (`disputed_mask`). Then every pixel
+that two objects' masks share goes to the object whose pass was the only candidate, and the
+other object loses it, so no two masks on a frame share a pixel. Every record says what the
+merge did (`prompt_payload.merge`). On the 20 measured clips this refused 217 object-frames as
+disputes, wrote nothing on 222 where neither pass had a real mask, took 176 masks from the
+backward pass and trimmed 180 forward masks of a neighbour's pixels.
+
+This doubles the GPU time. `--direction forward` runs the one pass from the span start, as
+the numbers above were measured; `--direction backward` runs the backward pass alone.
 
 ## Cost
 
@@ -149,6 +158,9 @@ Measured on one RTX A5000 (24 GB), eager mode:
 | the whole val split (602 videos) | about 120 GPU-hours |
 | all 6,770 videos | about 1,250 to 3,100 GPU-hours, depending on object counts |
 | peak VRAM | 6 to 19 GB per clip |
+
+These are the numbers of one pass. The default `--direction both` runs two passes, so the
+segmentation time and the GPU-hours double; the merge itself runs on the CPU in seconds.
 
 ## Limits
 

@@ -484,8 +484,9 @@ def _outputs(masks: dict, probs=0.9):
 
 def test_run_clip_both_directions_merges_and_records_the_rule(roots, campaign, monkeypatch):
     """--direction both: a forward and a backward session with the same prompts, merged frame
-    by frame; every record says which pass it came from and why."""
+    by frame by the pixels rule; every record says what the merge did and why."""
     from vidstg_masks import sam_session as ss
+    from vidstg_masks.records import rle_decode
     from vidstg_masks.worker import run_clip
     unit = next(u for u in load_worklist(campaign / "worklist.json")["units"] if u["vid"] == VID_B)
     plan, _ = plan_unit(unit, roots, 16, "human")
@@ -496,19 +497,30 @@ def test_run_clip_both_directions_merges_and_records_the_rule(roots, campaign, m
     n = s1 - s0 + 1
     H, W = plan["H"], plan["W"]
     b = plan["boxes"][t1][s0 + 7]["bbox"]
-    a = np.zeros((H, W), bool)                                   # the object: inside its own box
+    a = np.zeros((H, W), bool)                                   # t1: inside its own box
     a[int(b["ymin"]):int(b["ymax"]) + 1, int(b["xmin"]):int(b["xmax"]) + 1] = True
-    half = (int(b["xmax"]) - int(b["xmin"]) + 1) // 2
-    shifted = np.zeros((H, W), bool)                             # the object moved half a box to the right
-    shifted[int(b["ymin"]):int(b["ymax"]) + 1, int(b["xmin"]) + half:min(W, int(b["xmax"]) + 1 + half)] = True
-    far = np.zeros((H, W), bool)
-    far[0:2, 0:2] = True
+    body = np.zeros((H, W), bool)                                # t0: a block in a corner clear of t1
+    for ys, xs in ((slice(0, 24), slice(0, 24)), (slice(H - 24, H), slice(W - 24, W)),
+                   (slice(0, 24), slice(W - 24, W)), (slice(H - 24, H), slice(0, 24))):
+        body[:] = False
+        body[ys, xs] = True
+        if not (body & a).any():
+            break
+    assert not (body & a).any()
+    far = np.zeros((H, W), bool)                                 # a real mask somewhere else
+    far[H // 2 - 5:H // 2 + 5, W // 2 - 5:W // 2 + 5] = True
+    far &= ~(a | body)
+    assert far.sum() >= 20
+    speck = np.zeros((H, W), bool)
+    speck[int(b["ymin"]):int(b["ymin"]) + 2, int(b["xmin"]):int(b["xmin"]) + 2] = True   # 4 px
     empty = np.zeros((H, W), bool)
-    fwd = {s0 + i: _outputs({t0: a, t1: a}) for i in range(n - 1)}  # the forward pass stops short of the span end
-    fwd[s0 + 5] = _outputs({t0: a, t1: empty})                   # forward lost t1 at frame 5
-    fwd[s0 + 7] = _outputs({t0: a, t1: shifted})                 # forward half off the box at frame 7
-    fwd[s0 + 9] = _outputs({t0: a, t1: far})                     # forward on something else at frame 9
-    bwd = {s0 + i: _outputs({t0: a, t1: a}, 0.8) for i in range(1, n)}  # the backward pass never predicts the span start
+    fwd = {s0 + i: _outputs({t0: body, t1: a}) for i in range(n - 1)}  # the forward pass stops short of the span end
+    fwd[s0 + 5] = _outputs({t0: body, t1: empty})                # forward lost t1 at frame 5
+    fwd[s0 + 7] = _outputs({t0: body, t1: far})                  # forward on something else at frame 7
+    fwd[s0 + 8] = _outputs({t0: body | a, t1: speck})            # forward gave t1's pixels to t0 at frame 8
+    fwd[s0 + 9] = _outputs({t0: body, t1: speck})                # forward kept a speck of t1 at frame 9
+    bwd = {s0 + i: _outputs({t0: body, t1: a}, 0.8) for i in range(1, n)}  # the backward pass never predicts the span start
+    bwd[s0 + 8] = _outputs({t0: body | a, t1: a}, 0.8)
     monkeypatch.setattr(ss, "assert_checkpoint", lambda p: "c" * 64)
     monkeypatch.setattr(ss, "build_predictor", lambda checkpoint, n_obj: TwoPassFake(dict(forward=fwd, backward=bwd)))
     monkeypatch.setattr(ss, "set_offload", lambda enabled: None)
@@ -523,28 +535,29 @@ def test_run_clip_both_directions_merges_and_records_the_rule(roots, campaign, m
     run = run_clip(unit, roots, campaign, campaign / "ckpt.pt", "human", 16, verbose=False,
                    contained_negatives=False, direction="both")
     assert run["status"] == "done" and run["direction"] == "both" and run["frames"] == 2 * n - 2
-    assert (run["agree_iou"], run["dispute_iou"], run["refuse_disputed"]) == (0.7, 0.3, False)
+    assert (run["agree_iou"], run["speck_floor"], run["speck_ratio"]) == (0.3, 20, 0.1)
     recs = list(read_jsonl(campaign / "records" / f"{VID_B}.jsonl"))
     by = {(r["tid"], r["fid"]): r for r in recs}
-    rule = {k: r["prompt_payload"]["merge"]["rule"] for k, r in by.items() if r["prompt_payload"].get("merge")}
+    mg = {k: r["prompt_payload"]["merge"] for k, r in by.items() if r["prompt_payload"].get("merge")}
     assert by[(t0, s0 + 3)]["prompt_payload"]["direction"] == "bidirectional"
-    assert rule[(t0, s0)] == "forward_only" and rule[(t0, s1)] == "backward_only"
-    assert rule[(t1, s0 + 5)] == "backward_only" and by[(t1, s0 + 5)]["rle"] is not None
+    assert mg[(t0, s0)]["rule"] == "forward_only" and mg[(t0, s1)]["rule"] == "backward_only"
+    assert mg[(t1, s0 + 5)]["rule"] == "backward_only" and by[(t1, s0 + 5)]["rle"] is not None
     assert by[(t1, s0 + 5)]["mask_confidence"] == 0.8           # the backward pass's own confidence
-    assert rule[(t1, s0 + 7)] == "tiebreak" and by[(t1, s0 + 7)]["prompt_payload"]["merge"]["source"] == "backward"
-    assert rule[(t1, s0 + 9)] == "disputed" and by[(t1, s0 + 9)]["prompt_payload"]["merge"]["disputed"] is True
-    assert rule[(t0, s0 + 3)] == "agree" and by[(t0, s0 + 3)]["mask_confidence"] == 0.9   # forward kept
-    assert run["merge"] == {"agree": 2 * n - 7, "forward_only": 2, "backward_only": 3, "tiebreak": 1, "disputed": 1}
-    for r in recs:
-        validate_record(r)
-    # the refusal variant turns the disputed frame into a disputed_mask refusal
-    run = run_clip(unit, roots, campaign, campaign / "ckpt.pt", "human", 16, verbose=False,
-                   contained_negatives=False, direction="both", refuse_disputed=True)
-    recs = list(read_jsonl(campaign / "records" / f"{VID_B}.jsonl"))
-    by = {(r["tid"], r["fid"]): r for r in recs}
-    assert by[(t1, s0 + 9)]["reason_code"] == "disputed_mask" and by[(t1, s0 + 9)]["rle"] is None
-    assert by[(t1, s0 + 9)]["prompt_payload"]["merge"]["rule"] == "disputed_refused"
-    assert run["refusals"]["disputed_mask"] == 1 and run["merge"]["disputed_refused"] == 1
+    assert mg[(t0, s0 + 3)]["rule"] == "agree" and by[(t0, s0 + 3)]["mask_confidence"] == 0.9   # forward kept
+    # frame 7: two real masks that do not overlap -> refused, no box consulted
+    assert mg[(t1, s0 + 7)]["rule"] == "dispute" and mg[(t1, s0 + 7)]["decision"] == "refused"
+    assert by[(t1, s0 + 7)]["reason_code"] == "disputed_mask" and by[(t1, s0 + 7)]["rle"] is None
+    # frame 8: t0 agrees with itself but holds t1's pixels; t1's only candidate is backward -> handover
+    assert mg[(t0, s0 + 8)]["rule"] == "agree" and mg[(t0, s0 + 8)]["decision"] == "forward"
+    assert mg[(t0, s0 + 8)]["handover"]["removed_px"] == int(a.sum()) and mg[(t0, s0 + 8)]["handover"]["to"] == [t1]
+    assert rle_decode(by[(t0, s0 + 8)]["rle"]).sum() == int(body.sum())
+    assert mg[(t1, s0 + 8)]["rule"] == "forward_speck" and by[(t1, s0 + 8)]["mask_confidence"] == 0.8
+    assert not (rle_decode(by[(t0, s0 + 8)]["rle"]) & rle_decode(by[(t1, s0 + 8)]["rle"])).any()
+    # frame 9: a 4 px forward speck against a real backward mask -> backward
+    assert mg[(t1, s0 + 9)]["rule"] == "forward_speck" and mg[(t1, s0 + 9)]["source"] == "backward"
+    assert run["merge"]["dispute"] == 1 and run["merge"]["disputed_mask"] == 1 and run["merge"]["forward_speck"] == 2
+    assert run["merge"]["decision:refused"] == 1 and run["refusals"]["disputed_mask"] == 1
+    assert run["merge"]["forward_only"] == 2 and run["merge"]["backward_only"] == 3
     for r in recs:
         validate_record(r)
 

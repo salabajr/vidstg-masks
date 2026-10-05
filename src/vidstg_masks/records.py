@@ -32,7 +32,10 @@ REASON_CODES = (
     "too_many_objects",      # > MAX_OBJECTS relation tids in the clip
     "video_missing",         # no file at <video_root>/<video_path>
     "not_tracked",           # the pass never predicted this frame (the span-end frame of a backward pass)
-    "disputed_mask",         # forward and backward passes disagree and the merge refuses (rule 7)
+    "disputed_mask",         # --direction both: two real masks that mostly do not overlap (rule 7)
+    "passes_conflict",       # --direction both: two objects' only candidates, from different passes, share pixels
+    "handed_over_speck",     # --direction both: a mask trimmed under the speck floor with no backward mask to fall back on
+    "speck_mask",            # --direction both: the only mask either pass had was under the speck floor
 )
 DIRECTIONS = ("forward", "backward", "both")          # --direction; a merged record says "bidirectional"
 PAYLOAD_DIRECTIONS = ("forward", "backward", "bidirectional")

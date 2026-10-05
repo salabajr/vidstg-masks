@@ -1,34 +1,54 @@
-"""Merge the forward and the backward pass of one clip into one set of masks.
+"""Merge the forward and the backward pass of one clip into one set of masks: the pixels rule.
 
 Both passes prompt SAM with the same boxes; the forward pass propagates from the span start,
 the backward pass from the span end (`sam_session.run_session(direction=...)`). Near an
 anchor the pass that has just left it holds the fresher memory, so each pass fails on
-different frames. The merge keeps one mask per (object, frame) and writes the rule it applied
-into the record (`prompt_payload.merge`), so no choice is silent:
+different frames. The merge keeps one mask per (object, frame), uses no box, takes no speck,
+never paints a pixel twice, and writes what it did into every record (`prompt_payload.merge`).
 
-  neither pass has a mask           -> refusal (empty_mask)                       both_empty
-  forward only                      -> the forward mask                           forward_only
-  backward only                     -> the backward mask                          backward_only
-  both, IoU >= agree_iou            -> the forward mask (the passes agree)        agree
-  both, dispute_iou <= IoU < agree  -> the mask with the larger share of its pixels inside the
-                                       VidOR box; equal -> the larger mask         tiebreak
-  both, IoU < dispute_iou           -> the same choice, flagged disputed           disputed
-                                       (refuse_disputed: a refusal, disputed_mask) disputed_refused
+Reading the two candidates of one object on one frame (`read_candidates`):
+
+  a mask under speck_floor pixels is no mask; with two real masks, one under speck_ratio of
+  the other is no mask
+  no real mask in either pass          -> nothing written          both_empty, both_speck,
+                                                                   forward_speck_only, backward_speck_only
+  forward only                         -> forward, a strong vote   forward_only, backward_speck
+  backward only                        -> backward, a strong vote  backward_only, forward_speck
+  both, IoU >= agree_iou               -> forward preferred, either allowed (a weak vote)   agree
+  both, IoU < agree_iou                -> a real dispute: refused, disputed_mask            dispute
+
+Then per frame, across the objects (`decide_pixels`): each object takes its candidate; every
+pixel two written masks share goes to the object whose pass was the only candidate (the
+strong vote), and the object that merely preferred forward loses those pixels (its own
+backward mask, from the winner's pass, also leaves them out: two of the three masks on the
+frame say the pixels are not its). Two strong votes from different passes on the same pixels
+refuse both objects (passes_conflict). A trimmed mask that falls under speck_floor takes the
+object's backward mask when that touches nothing written, else it is refused
+(handed_over_speck). Inside one pass SAM gives a pixel to one object only, so after the
+handover no two written masks share a pixel.
+
+Measured on 20 VidSTG-val clips (69,729 object-frames; the research repo's
+reports/merge_rules_v2.md): 217 refusals (215 disputes, 2 conflicts), 222 object-frames with
+nothing real in either pass, 176 masks from the backward pass, 180 masks trimmed, 0 shared
+pixels; the earlier per-object rule with a box tie-break left 282 overlapping pairs.
 
 The forward pass is kept compressed (COCO RLE) while the backward pass runs, so a clip costs
 the memory of one pass plus its RLE strings. No torch here: the merge is numpy on the CPU.
 """
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 
 import numpy as np
 from pycocotools import mask as mask_util
 
-RULES = ("both_empty", "forward_only", "backward_only", "agree", "tiebreak", "disputed",
-         "disputed_refused")
-DEFAULT_AGREE_IOU = 0.7
-DEFAULT_DISPUTE_IOU = 0.3
+READINGS = ("both_empty", "forward_speck_only", "backward_speck_only", "both_speck", "forward_only",
+            "backward_speck", "backward_only", "forward_speck", "agree", "dispute")
+DECISIONS = ("forward", "backward", "refused", "none")
+REFUSALS = ("disputed_mask", "passes_conflict", "handed_over_speck")
+DEFAULT_AGREE_IOU = 0.3
+DEFAULT_SPECK_FLOOR = 20       # pixels
+DEFAULT_SPECK_RATIO = 0.1
 
 
 def compress(per_frame: dict) -> dict:
@@ -54,7 +74,8 @@ def decode(rle: dict) -> np.ndarray:
 
 
 def inside_share(m: np.ndarray, bbox: dict | None) -> float | None:
-    """Share of the mask's pixels inside the (inclusive) VidOR box; None without a box."""
+    """Share of the mask's pixels inside the (inclusive) VidOR box; None without a box.
+    Recorded for the reader of the provenance; the merge does not use it."""
     if bbox is None:
         return None
     H, W = m.shape
@@ -76,73 +97,142 @@ def _describe(m: np.ndarray, conf, bbox) -> dict:
                 confidence=None if conf is None else float(conf))
 
 
-def _pick(f: dict, b: dict) -> str:
-    """Tie-break: larger inside share, then larger area, then forward."""
-    kf = (f["inside"] if f["inside"] is not None else -1.0, f["area"], 1)
-    kb = (b["inside"] if b["inside"] is not None else -1.0, b["area"], 0)
-    return "forward" if kf >= kb else "backward"
+def read_candidates(fa: int, ba: int, iou_v, agree: float, floor: int, ratio: float) -> tuple[str, str | None]:
+    """The speck rule, then the per-object reading. Returns (reading, pref): pref 'forward' or
+    'backward' = that pass is the only real candidate (a strong vote); 'either' = the masks
+    mostly match, forward preferred (a weak vote); 'dispute'; None = nothing real to write."""
+    if fa == 0 and ba == 0:
+        return "both_empty", None
+    f_ok, b_ok = fa >= floor, ba >= floor
+    if not f_ok and not b_ok:
+        return ("both_speck" if fa and ba else "forward_speck_only" if fa else "backward_speck_only"), None
+    if f_ok and b_ok:
+        if fa < ratio * ba:
+            return "forward_speck", "backward"
+        if ba < ratio * fa:
+            return "backward_speck", "forward"
+        return ("agree", "either") if iou_v >= agree else ("dispute", "dispute")
+    if f_ok:
+        return ("forward_only" if ba == 0 else "backward_speck"), "forward"
+    return ("backward_only" if fa == 0 else "forward_speck"), "backward"
 
 
-def merge_frame(fwd, bwd, bbox: dict | None, agree_iou: float = DEFAULT_AGREE_IOU,
-                dispute_iou: float = DEFAULT_DISPUTE_IOU, refuse_disputed: bool = False):
-    """One (object, frame). `fwd` / `bwd` are (mask-or-rle, confidence) or None when that
-    pass has no mask there. Returns ((mask, confidence) or None, provenance dict)."""
-    mf = None if fwd is None else (decode(fwd[0]) if isinstance(fwd[0], dict) else fwd[0])
-    mb = None if bwd is None else (decode(bwd[0]) if isinstance(bwd[0], dict) else bwd[0])
-    if mf is not None and not mf.any():
-        mf = None
-    if mb is not None and not mb.any():
-        mb = None
-    prov = dict(rule=None, source=None, iou=None, disputed=False,
-                forward=None if mf is None else _describe(mf, fwd[1], bbox),
-                backward=None if mb is None else _describe(mb, bwd[1], bbox),
-                agree_iou=agree_iou, dispute_iou=dispute_iou)
-    if mf is None and mb is None:
-        prov["rule"] = "both_empty"
-        return None, prov
-    if mb is None:
-        prov.update(rule="forward_only", source="forward")
-        return (mf, fwd[1]), prov
-    if mf is None:
-        prov.update(rule="backward_only", source="backward")
-        return (mb, bwd[1]), prov
-    prov["iou"] = iou(mf, mb)
-    if prov["iou"] >= agree_iou:
-        prov.update(rule="agree", source="forward")
-        return (mf, fwd[1]), prov
-    source = _pick(prov["forward"], prov["backward"])
-    if prov["iou"] >= dispute_iou:
-        prov.update(rule="tiebreak", source=source)
-    elif refuse_disputed:
-        prov.update(rule="disputed_refused", source=None, disputed=True)
-        return None, prov
-    else:
-        prov.update(rule="disputed", source=source, disputed=True)
-    return ((mf, fwd[1]) if source == "forward" else (mb, bwd[1])), prov
+def decide_pixels(live: list, pref: dict, cand: dict, floor: int) -> dict:
+    """tid -> (decision, refusal reason or None, mask or None, handover dict or None).
+    `cand[tid][pass]` is {'mask': bool array, 'area': int, ...} or absent."""
+    out, chosen, strong = {}, {}, {}
+    for t in live:
+        if pref[t] == "dispute":
+            out[t] = ("refused", "disputed_mask", None, None)
+            continue
+        src = "forward" if pref[t] in ("forward", "either") else "backward"
+        chosen[t] = (src, cand[t][src]["mask"].copy())
+        strong[t] = pref[t] != "either"
+    tids = sorted(chosen)
+    handed = defaultdict(lambda: dict(removed_px=0, to=[]))
+    conflict = set()
+    for i, a in enumerate(tids):
+        for b in tids[i + 1:]:
+            (sa, ma), (sb, mb) = chosen[a], chosen[b]
+            inter = ma & mb
+            n = int(inter.sum())
+            if n == 0:
+                continue
+            if strong[a] and strong[b]:
+                conflict.update((a, b))
+                continue
+            if strong[a] == strong[b]:          # two weak votes: both forward, cannot share pixels
+                continue
+            weak, win = (a, b) if strong[b] else (b, a)
+            chosen[weak][1][inter] = False
+            handed[weak]["removed_px"] += n
+            handed[weak]["to"].append(win)
+    for t in tids:
+        if t in conflict:
+            out[t] = ("refused", "passes_conflict", None, None)
+            continue
+        src, m = chosen[t]
+        h = handed.get(t)
+        if h is not None:
+            h = dict(h, area_before=cand[t][src]["area"], area_after=int(m.sum()))
+            if h["area_after"] < floor:
+                mb = cand[t].get("backward")
+                others = [chosen[o][1] for o in tids if o != t and o not in conflict]
+                if mb is not None and not any((mb["mask"] & o).any() for o in others):
+                    out[t] = ("backward", None, mb["mask"], dict(h, fallback="backward"))
+                else:
+                    out[t] = ("refused", "handed_over_speck", None, h)
+                continue
+        out[t] = (src, None, m, h)
+    return out
+
+
+def merge_frame(fwd_objs: dict, bwd_objs: dict, boxes: dict, agree_iou: float = DEFAULT_AGREE_IOU,
+                speck_floor: int = DEFAULT_SPECK_FLOOR, speck_ratio: float = DEFAULT_SPECK_RATIO):
+    """One frame, every object that gets a record on it. `fwd_objs` / `bwd_objs` map tid ->
+    (mask-or-rle, confidence), absent or None where that pass has no mask; `boxes` maps tid ->
+    VidOR bbox or None (provenance only). Returns ({tid: (mask, confidence)} for the written
+    masks, {tid: provenance dict} for every tid in `boxes`)."""
+    cand, pref, prov = {}, {}, {}
+    for t in sorted(boxes):
+        c = {}
+        for name, objs in (("forward", fwd_objs), ("backward", bwd_objs)):
+            got = objs.get(t)
+            if got is None:
+                continue
+            m = decode(got[0]) if isinstance(got[0], dict) else got[0]
+            if m is not None and m.any():
+                c[name] = dict(mask=m, conf=got[1], **_describe(m, got[1], boxes[t]))
+        cand[t] = c
+        fa, ba = c.get("forward", {}).get("area", 0), c.get("backward", {}).get("area", 0)
+        iou_v = iou(c["forward"]["mask"], c["backward"]["mask"]) if fa and ba else None
+        reading, pref[t] = read_candidates(fa, ba, iou_v, agree_iou, speck_floor, speck_ratio)
+        prov[t] = dict(rule=reading, decision="none", source=None, iou=iou_v, disputed=reading == "dispute",
+                       forward=None if "forward" not in c else {k: c["forward"][k] for k in ("area", "inside", "confidence")},
+                       backward=None if "backward" not in c else {k: c["backward"][k] for k in ("area", "inside", "confidence")},
+                       agree_iou=agree_iou, speck_floor_px=speck_floor, speck_ratio=speck_ratio)
+    live = [t for t in sorted(boxes) if pref[t] is not None]
+    chosen = {}
+    for t, (dec, reason, m, hand) in decide_pixels(live, pref, cand, speck_floor).items():
+        if hand is not None:
+            prov[t]["handover"] = hand
+        if dec == "refused":
+            prov[t].update(decision="refused", refused_reason=reason)
+        else:
+            prov[t].update(decision=dec, source=dec)
+            chosen[t] = (m, cand[t][dec]["conf"])
+    return chosen, prov
 
 
 def merge_passes(fwd: dict, bwd: dict, plan: dict, agree_iou: float = DEFAULT_AGREE_IOU,
-                 dispute_iou: float = DEFAULT_DISPUTE_IOU, refuse_disputed: bool = False):
+                 speck_floor: int = DEFAULT_SPECK_FLOOR, speck_ratio: float = DEFAULT_SPECK_RATIO):
     """Whole clip. `fwd` is the compressed forward pass ({fid: {tid: (rle, conf)}}), `bwd`
     the backward pass ({fid: {tid: (mask, conf)}}). Walks every (tid, fid) with a VidOR box
-    inside the tid span (the frames that get a record). Returns
-    (per_frame {fid: {tid: (mask, conf)}} with the chosen masks only,
-     prov {(tid, fid): merge provenance}, Counter of rules)."""
+    inside the tid span (the frames that get a record), frame by frame so the objects of a
+    frame are decided together. Returns
+    (per_frame {fid: {tid: (mask, conf)}} with the written masks only,
+     prov {(tid, fid): merge provenance},
+     Counter of readings, decisions ('decision:<name>') and refusal reasons)."""
     from .anchors import in_span_fids
 
-    merged: dict[int, dict] = {}
-    prov: dict[tuple[int, int], dict] = {}
-    rules: Counter = Counter()
+    frames: dict[int, dict] = defaultdict(dict)
     for t in plan["tids"]:
         if plan["anchors"][t] is None:
             continue
         for fid in in_span_fids(plan, t):
-            f = fwd.get(fid, {}).get(t)
-            b = bwd.get(fid, {}).get(t)
-            bbox = plan["boxes"][t][fid]["bbox"]
-            chosen, p = merge_frame(f, b, bbox, agree_iou, dispute_iou, refuse_disputed)
-            prov[(t, fid)] = p
-            rules[p["rule"]] += 1
-            if chosen is not None:
-                merged.setdefault(fid, {})[t] = chosen
-    return merged, prov, rules
+            frames[fid][t] = plan["boxes"][t][fid]["bbox"]
+    merged: dict[int, dict] = {}
+    prov: dict[tuple[int, int], dict] = {}
+    counts: Counter = Counter()
+    for fid in sorted(frames):
+        boxes = frames[fid]
+        chosen, p = merge_frame(fwd.get(fid, {}), bwd.get(fid, {}), boxes, agree_iou, speck_floor, speck_ratio)
+        for t, pt in p.items():
+            prov[(t, fid)] = pt
+            counts[pt["rule"]] += 1
+            counts["decision:" + pt["decision"]] += 1
+            if pt["decision"] == "refused":
+                counts[pt["refused_reason"]] += 1
+        if chosen:
+            merged[fid] = chosen
+    return merged, prov, counts

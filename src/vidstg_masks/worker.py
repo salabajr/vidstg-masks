@@ -49,7 +49,8 @@ MAX_INTERRUPTIONS = 5     # a clip killed by a signal (walltime, preemption) is 
 # can tell how a campaign was run from its outputs alone.
 SETTINGS_KEYS = ("anchor_policy", "max_anchors", "hq_fallback", "max_gap", "gap_fill",
                  "keep_span_edges", "contained_negatives",
-                 "direction", "agree_iou", "speck_floor", "speck_ratio")
+                 "direction", "agree_iou", "speck_floor", "speck_ratio", "dispute_score",
+                 "dispute_rule", "dispute_winner")
 
 STOP_REQUESTED = False
 
@@ -58,11 +59,13 @@ def run_settings(anchor_policy: str, max_anchors: int, hq_fallback: str = "least
                  max_gap: int = 60, gap_fill: str = "human", keep_span_edges: bool = False,
                  contained_negatives: bool = False, direction: str = "forward",
                  agree_iou: float = 0.3, speck_floor: int = 20,
-                 speck_ratio: float = 0.1) -> dict:
+                 speck_ratio: float = 0.1, dispute_score: float | None = None,
+                 dispute_rule: str = "refuse", dispute_winner: str = "weak") -> dict:
     return dict(anchor_policy=anchor_policy, max_anchors=max_anchors, hq_fallback=hq_fallback,
                 max_gap=max_gap, gap_fill=gap_fill, keep_span_edges=keep_span_edges,
                 contained_negatives=contained_negatives, direction=direction,
-                agree_iou=agree_iou, speck_floor=speck_floor, speck_ratio=speck_ratio)
+                agree_iou=agree_iou, speck_floor=speck_floor, speck_ratio=speck_ratio,
+                dispute_score=dispute_score, dispute_rule=dispute_rule, dispute_winner=dispute_winner)
 
 
 def request_stop(signum, _frame) -> None:
@@ -379,11 +382,13 @@ def run_clip(unit: dict, roots: Roots, campaign_root: Path, checkpoint: Path,
              checkpoint_hash: str | None = None, max_gap: int = 60, gap_fill: str = "human",
              keep_span_edges: bool = False, contained_negatives: bool = False,
              direction: str = "forward", agree_iou: float = 0.3, speck_floor: int = 20,
-             speck_ratio: float = 0.1) -> dict:
+             speck_ratio: float = 0.1, dispute_score: float | None = None,
+             dispute_rule: str = "refuse", dispute_winner: str = "weak") -> dict:
     """One clip end to end inside the current process: plan, precheck, SAM, records.
     `direction`: forward or backward, one pass; both = a forward and a backward session
     with the same prompts, merged by merge.merge_passes (the pixels rule: `agree_iou`,
-    `speck_floor`, `speck_ratio`; every record then carries what the merge did).
+    `speck_floor`, `speck_ratio`, and the opt-in dispute tie-break `dispute_rule` /
+    `dispute_score` / `dispute_winner`; every record then carries what the merge did).
     `checkpoint_hash` is the sha256 the parent shard already verified (so the 3.5 GB file
     is hashed once per shard, not once per clip); without it the file is hashed here.
     `max_gap` / `gap_fill` / `keep_span_edges` are the coverage-rule settings of the
@@ -394,10 +399,11 @@ def run_clip(unit: dict, roots: Roots, campaign_root: Path, checkpoint: Path,
 
     if direction not in DIRECTIONS:
         raise ValueError(f"direction must be one of {DIRECTIONS}, got {direction!r}")
+    mg.check_dispute_settings(dispute_rule, dispute_score, dispute_winner)
     d = campaign_dirs(campaign_root)
     settings = run_settings(anchor_policy, max_anchors, hq_fallback, max_gap, gap_fill,
                             keep_span_edges, contained_negatives, direction, agree_iou,
-                            speck_floor, speck_ratio)
+                            speck_floor, speck_ratio, dispute_score, dispute_rule, dispute_winner)
     plan, video = plan_unit(unit, roots, max_anchors, anchor_policy, apply_policy=False)
     reason, details = precheck_clip(plan, video)
     if checkpoint_hash is None:
@@ -443,7 +449,8 @@ def run_clip(unit: dict, roots: Roots, campaign_root: Path, checkpoint: Path,
             wall = wall_f + wall_b
             frames_run = len(fwd_rle) + len(bwd)
             per_frame, merge_prov, merge_rules = mg.merge_passes(
-                fwd_rle, bwd, plan, agree_iou, speck_floor, speck_ratio)
+                fwd_rle, bwd, plan, agree_iou, speck_floor, speck_ratio, dispute_score,
+                dispute_rule, dispute_winner)
             if verbose:
                 print(f"   merge: {dict(merge_rules)}", flush=True)
         else:
@@ -475,7 +482,8 @@ def process_one_main(worklist_path: Path, vid: str, campaign_root: Path, checkpo
                      max_gap: int = 60, gap_fill: str = "human", keep_span_edges: bool = False,
                      contained_negatives: bool = False, direction: str = "forward",
                      agree_iou: float = 0.3, speck_floor: int = 20,
-                     speck_ratio: float = 0.1) -> int:
+                     speck_ratio: float = 0.1, dispute_score: float | None = None,
+                     dispute_rule: str = "refuse", dispute_winner: str = "weak") -> int:
     """Entry point of the per-clip subprocess. Writes errors/<vid>.json on failure and
     exits EXIT_OOM for a CUDA OOM so the parent can retry with offload forced on.
     `roots`, when given (--roots-from-env), replaces the roots frozen in the worklist and
@@ -498,7 +506,8 @@ def process_one_main(worklist_path: Path, vid: str, campaign_root: Path, checkpo
                  force_offload, hq_fallback, checkpoint_hash=checkpoint_hash,
                  max_gap=max_gap, gap_fill=gap_fill, keep_span_edges=keep_span_edges,
                  contained_negatives=contained_negatives, direction=direction,
-                 agree_iou=agree_iou, speck_floor=speck_floor, speck_ratio=speck_ratio)
+                 agree_iou=agree_iou, speck_floor=speck_floor, speck_ratio=speck_ratio,
+                 dispute_score=dispute_score, dispute_rule=dispute_rule, dispute_winner=dispute_winner)
         (d["errors"] / f"{vid}.json").unlink(missing_ok=True)
         return 0
     except Exception as e:  # noqa: BLE001 - record, never drop
@@ -517,7 +526,8 @@ def subprocess_runner(worklist_path: Path, campaign_root: Path, checkpoint: Path
                       max_gap: int = 60, gap_fill: str = "human", keep_span_edges: bool = False,
                       contained_negatives: bool = False, direction: str = "forward",
                       agree_iou: float = 0.3, speck_floor: int = 20,
-                      speck_ratio: float = 0.1):
+                      speck_ratio: float = 0.1, dispute_score: float | None = None,
+                      dispute_rule: str = "refuse", dispute_winner: str = "weak"):
     """Default clip runner: one fresh Python process per clip. The checkpoint is hashed
     once, before the first clip, and the hash handed to every child. `roots` (from
     --roots-from-env) is passed to the child as explicit root flags; the policy settings
@@ -544,6 +554,9 @@ def subprocess_runner(worklist_path: Path, campaign_root: Path, checkpoint: Path
         cmd.append("--contained-negatives" if contained_negatives else "--no-contained-negatives")
         cmd += ["--direction", direction, "--agree-iou", str(agree_iou),
                 "--speck-floor", str(speck_floor), "--speck-ratio", str(speck_ratio)]
+        cmd += ["--dispute-rule", dispute_rule, "--dispute-winner", dispute_winner]
+        if dispute_score is not None:
+            cmd += ["--dispute-score", str(dispute_score)]
         if force_offload:
             cmd.append("--force-offload")
         if roots is not None:
@@ -663,7 +676,8 @@ def process(worklist_path: Path, shard_index: int, shard_count: int, campaign_ro
             roots_from_env: bool = False, max_gap: int = 60, gap_fill: str = "human",
             keep_span_edges: bool = False, contained_negatives: bool = False,
             direction: str = "forward", agree_iou: float = 0.3, speck_floor: int = 20,
-            speck_ratio: float = 0.1) -> int:
+            speck_ratio: float = 0.1, dispute_score: float | None = None,
+            dispute_rule: str = "refuse", dispute_winner: str = "weak") -> int:
     """Shard worker: walk the worklist from this shard's offset, claim each pending clip
     and run it. Returns 0 when nothing is left for this shard, 99 when drained by a signal
     (Slurm requeue), 1 when a clip failed terminally. While other shards hold the remaining
@@ -676,7 +690,7 @@ def process(worklist_path: Path, shard_index: int, shard_count: int, campaign_ro
     thresholds of a `both` run."""
     settings = run_settings(anchor_policy, max_anchors, hq_fallback, max_gap, gap_fill,
                             keep_span_edges, contained_negatives, direction, agree_iou,
-                            speck_floor, speck_ratio)
+                            speck_floor, speck_ratio, dispute_score, dispute_rule, dispute_winner)
     wl = load_worklist(worklist_path)
     wl_roots = Roots.from_dict(wl["roots"])
     units = wl["units"]
@@ -697,7 +711,8 @@ def process(worklist_path: Path, shard_index: int, shard_count: int, campaign_ro
                                         max_anchors, python, hq_fallback,
                                         roots if roots_from_env else None, max_gap, gap_fill,
                                         keep_span_edges, contained_negatives, direction,
-                                        agree_iou, speck_floor, speck_ratio)
+                                        agree_iou, speck_floor, speck_ratio, dispute_score,
+                                        dispute_rule, dispute_winner)
     order = shard_order(units, shard_index, shard_count)
     job = os.environ.get("SLURM_ARRAY_JOB_ID") or os.environ.get("SLURM_JOB_ID")
     task = os.environ.get("SLURM_ARRAY_TASK_ID", str(shard_index))

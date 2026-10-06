@@ -2,6 +2,7 @@
 handover of shared pixels, the refusals, and the whole-clip walk over the frames that get a
 record."""
 import numpy as np
+import pytest
 
 from vidstg_masks import merge
 from vidstg_masks.worker import build_worklist, plan_unit
@@ -125,3 +126,130 @@ def test_merge_passes_walks_the_record_frames(roots):
     assert prov[(0, 3)]["rule"] == "agree" and merged[3][0][1] == 0.9
     assert counts == {"agree": 18, "forward_only": 1, "backward_only": 3,
                       "decision:forward": 19, "decision:backward": 3}
+
+
+def test_merge_frame_dispute_score_tiebreak():
+    """A dispute (two real masks that do not overlap) is refused by default; with dispute_score
+    the forward mask is written when the forward presence score reaches it, as a weak vote a
+    strong partner can trim."""
+    f, b = square(10, 30, 10, 30), square(10, 30, 32, 52)              # 400 px each, no overlap
+    chosen, p = merge.merge_frame({0: (f, 0.95)}, {0: (b, 0.99)}, {0: BOX})
+    assert p[0]["rule"] == "dispute" and p[0]["decision"] == "refused" and p[0]["refused_reason"] == "disputed_mask"
+    assert p[0]["dispute_score"] is None and p[0]["tiebreak"] is None and chosen == {}
+    assert (p[0]["dispute_rule"], p[0]["dispute_winner"]) == ("refuse", "weak")
+    chosen, p = merge.merge_frame({0: (f, 0.95)}, {0: (b, 0.99)}, {0: BOX}, dispute_score=0.9, dispute_rule="forward_score")
+    assert p[0]["decision"] == "forward" and p[0]["source"] == "forward" and chosen[0][1] == 0.95
+    assert p[0]["tiebreak"] == dict(rule="forward_score", threshold=0.9, forward_score=0.95, backward_score=0.99,
+                                    pick="forward", taken=True, winner="weak")
+    chosen, p = merge.merge_frame({0: (f, 0.8)}, {0: (b, 0.99)}, {0: BOX}, dispute_score=0.9, dispute_rule="forward_score")
+    assert p[0]["decision"] == "refused" and p[0]["refused_reason"] == "disputed_mask"
+    assert p[0]["tiebreak"]["taken"] is False and chosen == {}
+    # a strong partner takes the pixels a tie-break mask shares with it; what is left under the
+    # floor is refused, never replaced by the disputed backward mask
+    arm = square(10, 30, 10, 30)
+    fwd = {0: (arm, 0.95), 1: (square(0, 3, 40, 43), 0.95)}           # 0 disputes; 1's forward mask is a 9 px speck
+    bwd = {0: (square(10, 30, 32, 52), 0.99), 1: (arm, 0.9)}          # 1's only real mask is the arm
+    chosen, p = merge.merge_frame(fwd, bwd, {0: BOX, 1: None}, dispute_score=0.9, dispute_rule="forward_score")
+    assert p[1]["decision"] == "backward" and chosen[1][0].sum() == 400
+    assert p[0]["decision"] == "refused" and p[0]["refused_reason"] == "handed_over_speck"
+    assert p[0]["handover"]["removed_px"] == 400 and 0 not in chosen
+
+
+def test_merge_passes_counts_the_tiebreak(roots):
+    """Whole-clip walk: with dispute_score the counter says how many disputes the tie-break wrote."""
+    wl = build_worklist(roots, "train")
+    plan, _ = plan_unit(wl["units"][0], roots, 16, "human")
+    f, b = square(10, 30, 10, 30), square(10, 30, 32, 52)             # tid 0, frame 3: a dispute
+    fwd = merge.compress({3: {0: (f, 0.95)}})
+    bwd = {3: {0: (b, 0.99)}}
+    merged, prov, counts = merge.merge_passes(fwd, bwd, plan)
+    assert prov[(0, 3)]["decision"] == "refused" and counts["disputed_mask"] == 1 and "tiebreak:forward" not in counts
+    merged, prov, counts = merge.merge_passes(fwd, bwd, plan, dispute_score=0.9, dispute_rule="forward_score")
+    assert prov[(0, 3)]["decision"] == "forward" and counts["tiebreak:forward"] == 1 and merged[3][0][1] == 0.95
+    assert counts["disputed_mask"] == 0 and prov[(0, 3)]["tiebreak"]["taken"] is True
+
+
+def test_higher_score_rule():
+    """higher_score: the pass with the higher presence score when it reaches the threshold; equal
+    scores go forward; under the threshold the dispute stays refused; a missing score is the lowest."""
+    f, b = square(10, 30, 10, 30), square(10, 30, 32, 52)                    # 400 px each, no overlap
+    hs = dict(dispute_rule="higher_score", dispute_score=0.907)
+    chosen, p = merge.merge_frame({0: (f, 0.95)}, {0: (b, 0.99)}, {0: BOX}, **hs)
+    assert p[0]["decision"] == "backward" and p[0]["source"] == "backward" and chosen[0][1] == 0.99
+    assert p[0]["tiebreak"] == dict(rule="higher_score", threshold=0.907, forward_score=0.95, backward_score=0.99,
+                                    pick="backward", taken=True, winner="weak")
+    assert (p[0]["dispute_rule"], p[0]["dispute_score"], p[0]["dispute_winner"]) == ("higher_score", 0.907, "weak")
+    chosen, p = merge.merge_frame({0: (f, 0.99)}, {0: (b, 0.95)}, {0: BOX}, **hs)
+    assert p[0]["decision"] == "forward" and p[0]["tiebreak"]["pick"] == "forward" and chosen[0][1] == 0.99
+    chosen, p = merge.merge_frame({0: (f, 0.93)}, {0: (b, 0.93)}, {0: BOX}, **hs)
+    assert p[0]["decision"] == "forward"                                        # equal scores: forward
+    chosen, p = merge.merge_frame({0: (f, 0.81)}, {0: (b, 0.86)}, {0: BOX}, **hs)
+    assert p[0]["decision"] == "refused" and p[0]["refused_reason"] == "disputed_mask" and chosen == {}
+    assert p[0]["tiebreak"]["pick"] is None and p[0]["tiebreak"]["taken"] is False
+    chosen, p = merge.merge_frame({0: (f, None)}, {0: (b, 0.95)}, {0: BOX}, **hs)
+    assert p[0]["decision"] == "backward"
+    assert merge.tiebreak_pick("forward_score", 0.95, 0.99, 0.9) == "forward"
+    assert merge.tiebreak_pick("forward_score", 0.85, 0.99, 0.9) is None
+
+
+def test_higher_score_weak_backward_win_yields_to_a_forward_neighbour():
+    """A backward win as a weak vote: the pixels it shares with a neighbour's (weak) forward mask stay
+    with the neighbour; trimmed under the floor it is refused, never swapped for the forward disputed mask."""
+    toy_f, toy_b = square(0, 20, 40, 60), square(20, 40, 0, 20)               # 400 px each: a dispute
+    baby = square(0, 48, 0, 10)                                                # agreed; covers half of toy_b
+    hs = dict(dispute_rule="higher_score", dispute_score=0.907)
+    chosen, p = merge.merge_frame({0: (baby, 0.99), 1: (toy_f, 0.90)}, {0: (baby, 0.98), 1: (toy_b, 0.95)},
+                                  {0: BOX, 1: None}, **hs)
+    assert p[1]["decision"] == "backward" and p[1]["tiebreak"]["pick"] == "backward"
+    assert p[1]["handover"] == dict(removed_px=200, to=[0], area_before=400, area_after=200)
+    assert chosen[1][0].sum() == 200 and chosen[0][0].sum() == 480 and "handover" not in p[0]
+    assert not (chosen[0][0] & chosen[1][0]).any()
+    baby = square(0, 48, 0, 40)                                                # covers all of toy_b
+    chosen, p = merge.merge_frame({0: (baby, 0.99), 1: (toy_f, 0.90)}, {0: (baby, 0.98), 1: (toy_b, 0.95)},
+                                  {0: BOX, 1: None}, **hs)
+    assert p[1]["decision"] == "refused" and p[1]["refused_reason"] == "handed_over_speck" and 1 not in chosen
+    assert p[1]["handover"]["area_after"] == 0 and "fallback" not in p[1]["handover"]
+    assert p[0]["decision"] == "forward" and chosen[0][0].sum() == 48 * 40
+
+
+def test_higher_score_strong_winner_takes_the_shared_pixels_and_conflicts():
+    """The strong winner: the dispute winner takes the pixels an agreed neighbour shares with it (the
+    neighbour is trimmed), and is refused together with a neighbour that is the only candidate of the
+    other pass (passes_conflict)."""
+    toy_f, toy_b = square(0, 20, 40, 60), square(20, 40, 0, 20)
+    baby = square(0, 48, 0, 40)                                                # agreed; covers all of toy_b
+    hs = dict(dispute_rule="higher_score", dispute_score=0.907, dispute_winner="strong")
+    chosen, p = merge.merge_frame({0: (baby, 0.99), 1: (toy_f, 0.90)}, {0: (baby, 0.98), 1: (toy_b, 0.95)},
+                                  {0: BOX, 1: None}, **hs)
+    assert p[1]["decision"] == "backward" and p[1]["tiebreak"]["winner"] == "strong" and "handover" not in p[1]
+    assert chosen[1][0].sum() == 400 and chosen[1][1] == 0.95
+    assert p[0]["decision"] == "forward" and p[0]["handover"] == dict(removed_px=400, to=[1], area_before=1920, area_after=1520)
+    assert not (chosen[0][0] & chosen[1][0]).any()
+    adult_f = square(20, 40, 0, 20)                                            # forward only, the same pixels as toy_b
+    chosen, p = merge.merge_frame({1: (toy_f, 0.90), 2: (adult_f, 0.97)}, {1: (toy_b, 0.95)}, {1: None, 2: None}, **hs)
+    assert p[1]["rule"] == "dispute" and p[2]["rule"] == "forward_only"
+    assert p[1]["decision"] == p[2]["decision"] == "refused"
+    assert p[1]["refused_reason"] == p[2]["refused_reason"] == "passes_conflict" and chosen == {}
+    # the same frame under the weak winner: the adult keeps the pixels, the toy is trimmed to nothing
+    chosen, p = merge.merge_frame({1: (toy_f, 0.90), 2: (adult_f, 0.97)}, {1: (toy_b, 0.95)}, {1: None, 2: None},
+                                  dispute_rule="higher_score", dispute_score=0.907)
+    assert p[2]["decision"] == "forward" and chosen[2][0].sum() == 400
+    assert p[1]["decision"] == "refused" and p[1]["refused_reason"] == "handed_over_speck"
+
+
+def test_dispute_settings_are_checked(roots):
+    f, b = square(10, 30, 10, 30), square(10, 30, 32, 52)
+    for bad in (dict(dispute_score=0.9),                                        # a threshold without a rule
+                dict(dispute_rule="higher_score"),                              # a rule without a threshold
+                dict(dispute_rule="coin", dispute_score=0.9),
+                dict(dispute_rule="higher_score", dispute_score=0.9, dispute_winner="loud")):
+        with pytest.raises(ValueError):
+            merge.merge_frame({0: (f, 0.95)}, {0: (b, 0.99)}, {0: BOX}, **bad)
+    # the whole-clip walk carries the settings and counts what the tie-break wrote
+    wl = build_worklist(roots, "train")
+    plan, _ = plan_unit(wl["units"][0], roots, 16, "human")
+    fwd, bwd = merge.compress({3: {0: (f, 0.95)}}), {3: {0: (b, 0.99)}}
+    merged, prov, counts = merge.merge_passes(fwd, bwd, plan, dispute_score=0.907, dispute_rule="higher_score",
+                                              dispute_winner="strong")
+    assert prov[(0, 3)]["decision"] == "backward" and counts["tiebreak:backward"] == 1 and merged[3][0][1] == 0.99
+    assert prov[(0, 3)]["tiebreak"]["winner"] == "strong" and counts["disputed_mask"] == 0

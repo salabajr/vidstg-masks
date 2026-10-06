@@ -14,6 +14,7 @@ from pathlib import Path
 from . import CHECKPOINT_SHA256, SAM3_COMMIT, __version__
 from .anchors import ANCHOR_POLICIES
 from .datasets import Roots
+from .merge import DISPUTE_RULES, DISPUTE_WINNERS
 
 
 def _add_roots(p: argparse.ArgumentParser) -> None:
@@ -28,11 +29,12 @@ def _add_campaign(p: argparse.ArgumentParser) -> None:
 
 
 def _add_policy(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--direction", choices=("forward", "backward", "both"), default="both",
-                   help="both (default): a SAM pass from the span start and one from the span end, "
-                        "merged frame by frame by the pixels rule (docs/PIPELINE.md, Backward pass); "
-                        "twice the GPU time of forward. forward: the one pass from the span start. "
-                        "backward: the one pass from the span end")
+    p.add_argument("--direction", choices=("forward", "backward", "both"), default="forward",
+                   help="forward (default): the one SAM pass from the span start. both: that pass "
+                        "and one from the span end, merged frame by frame by the pixels rule "
+                        "(docs/PIPELINE.md, Backward pass); twice the GPU time, and the merge's "
+                        "treatment of disputed frames is still under eye review. backward: the "
+                        "one pass from the span end")
     p.add_argument("--agree-iou", type=float, default=0.3,
                    help="both: overlap at or above which the two masks of an object mostly match "
                         "(the forward one is preferred); below it the frame is a dispute and refused")
@@ -40,6 +42,22 @@ def _add_policy(p: argparse.ArgumentParser) -> None:
                    help="both: a mask under this many pixels is no mask")
     p.add_argument("--speck-ratio", type=float, default=0.1,
                    help="both: with two real masks, the one under this share of the other is no mask")
+    p.add_argument("--dispute-rule", choices=DISPUTE_RULES, default="refuse",
+                   help="both: what to do on a disputed frame (two real masks that do not overlap). "
+                        "refuse (default): no mask. higher_score: the pass with the higher presence score "
+                        "(mask_confidence) when that score is at least --dispute-score, else no mask (equal "
+                        "scores: forward). forward_score: the forward mask when its score is at least "
+                        "--dispute-score, else no mask. Measured: higher_score 0.907 with --dispute-winner "
+                        "strong (docs/PIPELINE.md, Backward pass)")
+    p.add_argument("--dispute-score", type=float, default=None,
+                   help="both: the presence-score threshold of --dispute-rule higher_score / forward_score "
+                        "(required with them, not allowed with refuse)")
+    p.add_argument("--dispute-winner", choices=DISPUTE_WINNERS, default="weak",
+                   help="both: how a tie-break mask meets its neighbours. weak (default): it yields the "
+                        "pixels it shares with a neighbour whose pass was the only candidate (and a backward "
+                        "win also yields to a neighbour's forward mask); left under --speck-floor it is "
+                        "refused. strong: it takes the pixels an agreed neighbour shares with it and is "
+                        "refused together with a neighbour that is the only candidate of the other pass")
     p.add_argument("--anchor-policy", choices=ANCHOR_POLICIES, default="human_gap",
                    help="human_gap (default): the VidOR box at every human keyframe, capped by "
                         "--max-anchors, plus the coverage rule (--max-gap / --gap-fill), no "
@@ -314,11 +332,21 @@ def cmd_build_worklist(args) -> int:
     return 0
 
 
+def _check_dispute(args) -> None:
+    from .merge import check_dispute_settings
+
+    try:
+        check_dispute_settings(args.dispute_rule, args.dispute_score, args.dispute_winner)
+    except ValueError as e:
+        raise SystemExit(f"--dispute-rule / --dispute-score / --dispute-winner: {e}")
+
+
 def cmd_process(args) -> int:
     from .worker import install_signal_handlers, process
 
     if not 0 <= args.shard_index < args.shard_count:
         raise SystemExit("--shard-index must satisfy 0 <= index < shard-count")
+    _check_dispute(args)
     install_signal_handlers()
     roots = Roots.from_args(args) if args.roots_from_env else None
     return process(args.worklist.resolve(), args.shard_index, args.shard_count,
@@ -329,12 +357,14 @@ def cmd_process(args) -> int:
                    gap_fill=args.gap_fill, keep_span_edges=args.keep_span_edges,
                    contained_negatives=args.contained_negatives, direction=args.direction,
                    agree_iou=args.agree_iou, speck_floor=args.speck_floor,
-                   speck_ratio=args.speck_ratio)
+                   speck_ratio=args.speck_ratio, dispute_score=args.dispute_score,
+                   dispute_rule=args.dispute_rule, dispute_winner=args.dispute_winner)
 
 
 def cmd_process_one(args) -> int:
     from .worker import process_one_main
 
+    _check_dispute(args)
     roots = Roots.from_args(args) if args.roots_from_env else None
     return process_one_main(args.worklist.resolve(), args.vid, args.campaign_root.resolve(),
                             args.checkpoint.resolve(), args.anchor_policy, args.max_anchors,
@@ -344,7 +374,8 @@ def cmd_process_one(args) -> int:
                             keep_span_edges=args.keep_span_edges,
                             contained_negatives=args.contained_negatives, direction=args.direction,
                             agree_iou=args.agree_iou, speck_floor=args.speck_floor,
-                            speck_ratio=args.speck_ratio)
+                            speck_ratio=args.speck_ratio, dispute_score=args.dispute_score,
+                            dispute_rule=args.dispute_rule, dispute_winner=args.dispute_winner)
 
 
 def cmd_status(args) -> int:

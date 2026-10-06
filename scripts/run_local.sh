@@ -14,10 +14,21 @@ MAX_ANCHORS="${MAX_ANCHORS:-16}"
 MAX_GAP="${MAX_GAP:-60}"
 GAP_FILL="${GAP_FILL:-human}"
 CONTAINED_NEGATIVES="${CONTAINED_NEGATIVES:-1}"
+# Passes and merge (README, Backward pass and the merge); the dispute tie-break is off unless DISPUTE_RULE says otherwise.
+DIRECTION="${DIRECTION:-forward}"
+AGREE_IOU="${AGREE_IOU:-0.3}"
+SPECK_FLOOR="${SPECK_FLOOR:-20}"
+SPECK_RATIO="${SPECK_RATIO:-0.1}"
+DISPUTE_RULE="${DISPUTE_RULE:-refuse}"
+DISPUTE_SCORE="${DISPUTE_SCORE:-}"
+DISPUTE_WINNER="${DISPUTE_WINNER:-weak}"
 policy_flags=()
 [[ "${KEEP_SPAN_EDGES:-0}" == "1" ]] && policy_flags+=(--keep-span-edges)
 # passed either way, so the variable decides: 1 -> on, anything else -> off
 if [[ "${CONTAINED_NEGATIVES}" == "1" ]]; then policy_flags+=(--contained-negatives); else policy_flags+=(--no-contained-negatives); fi
+policy_flags+=(--direction "${DIRECTION}" --agree-iou "${AGREE_IOU}" --speck-floor "${SPECK_FLOOR}" --speck-ratio "${SPECK_RATIO}"
+               --dispute-rule "${DISPUTE_RULE}" --dispute-winner "${DISPUTE_WINNER}")
+[[ -n "${DISPUTE_SCORE}" ]] && policy_flags+=(--dispute-score "${DISPUTE_SCORE}")
 export VIDSTG_ROOT VIDOR_ANN_ROOT VIDOR_VIDEO_ROOT VIDOR_TRANSCODED_ROOT="${VIDOR_TRANSCODED_ROOT:-}"
 export PYTHONPATH="${REPO_ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
 mkdir -p "${CAMPAIGN_ROOT}"

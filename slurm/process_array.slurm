@@ -66,6 +66,10 @@ policy_flags=()
 [[ "${KEEP_SPAN_EDGES:-0}" == "1" ]] && policy_flags+=(--keep-span-edges)
 # passed either way, so the variable decides: 1 (the default) -> on, anything else -> off
 if [[ "${CONTAINED_NEGATIVES:-1}" == "1" ]]; then policy_flags+=(--contained-negatives); else policy_flags+=(--no-contained-negatives); fi
+# passes and merge; DISPUTE_SCORE is the threshold of a score rule (unset under refuse)
+policy_flags+=(--direction "${DIRECTION:-forward}" --agree-iou "${AGREE_IOU:-0.3}" --speck-floor "${SPECK_FLOOR:-20}"
+               --speck-ratio "${SPECK_RATIO:-0.1}" --dispute-rule "${DISPUTE_RULE:-refuse}" --dispute-winner "${DISPUTE_WINNER:-weak}")
+[[ -n "${DISPUTE_SCORE:-}" ]] && policy_flags+=(--dispute-score "${DISPUTE_SCORE}")
 
 set +e
 "${PYTHON_BIN}" -m vidstg_masks.cli process \

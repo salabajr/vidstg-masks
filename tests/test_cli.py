@@ -165,11 +165,18 @@ def test_direction_flags_reach_the_worker(data, tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "process", stub)
     monkeypatch.setattr(worker, "process_one_main", stub)
     common = ["--worklist", str(c / "worklist.json"), "--campaign-root", str(c), "--checkpoint", str(c / "x.pt")]
-    assert run(["process", *common]) == 0                                  # default: both passes, merged
-    assert (seen["direction"], seen["agree_iou"], seen["speck_floor"], seen["speck_ratio"]) == ("both", 0.3, 20, 0.1)
+    assert run(["process", *common]) == 0                                  # default: the forward pass alone
+    assert (seen["direction"], seen["agree_iou"], seen["speck_floor"], seen["speck_ratio"], seen["dispute_score"]) == ("forward", 0.3, 20, 0.1, None)
+    assert (seen["dispute_rule"], seen["dispute_winner"]) == ("refuse", "weak")
     assert run(["process", *common, "--direction", "forward", "--agree-iou", "0.8", "--speck-floor", "30",
-                "--speck-ratio", "0.2"]) == 0
-    assert (seen["direction"], seen["agree_iou"], seen["speck_floor"], seen["speck_ratio"]) == ("forward", 0.8, 30, 0.2)
+                "--speck-ratio", "0.2", "--dispute-rule", "higher_score", "--dispute-score", "0.907",
+                "--dispute-winner", "strong"]) == 0
+    assert (seen["direction"], seen["agree_iou"], seen["speck_floor"], seen["speck_ratio"], seen["dispute_score"]) == ("forward", 0.8, 30, 0.2, 0.907)
+    assert (seen["dispute_rule"], seen["dispute_winner"]) == ("higher_score", "strong")
+    with pytest.raises(SystemExit):                                              # a threshold without a rule
+        cli.main(["process", *common, "--dispute-score", "0.9"])
+    with pytest.raises(SystemExit):                                              # a rule without a threshold
+        cli.main(["process-one", *common, "--vid", VID_B, "--dispute-rule", "forward_score"])
     assert run(["process-one", *common, "--vid", VID_B, "--direction", "backward"]) == 0
     assert seen["direction"] == "backward" and seen["speck_floor"] == 20
     with pytest.raises(SystemExit):

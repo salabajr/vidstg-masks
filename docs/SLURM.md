@@ -21,8 +21,8 @@ SPLIT=all CAMPAIGN_ROOT=/outputs/vidstg-masks-all \
 bash scripts/submit_slurm.sh
 ```
 
-Required: `SLURM_PARTITION`, `SLURM_ACCOUNT`, `VIDSTG_ROOT`, `VIDOR_ANN_ROOT`,
-`VIDOR_VIDEO_ROOT`. Defaults: `GPU_GRES` `gpu:1` (use the site's form, e.g. `gpu:a40:1`),
+Required: `SLURM_PARTITION`, `VIDSTG_ROOT`, `VIDOR_ANN_ROOT`, `VIDOR_VIDEO_ROOT`;
+`SLURM_ACCOUNT` where the site needs one (passed as `--account` only when set). Defaults: `GPU_GRES` `gpu:1` (use the site's form, e.g. `gpu:a40:1`),
 `NUM_WORKERS` 8, `TIME_LIMIT` 12:00:00, `CPUS_PER_TASK` 8, `MEMORY` 48G,
 `SIGNAL_LEAD_SECONDS` 1800, `STAGE_CHECKPOINT` 1, `VIDSTG_MASKS_CACHE_ROOT` `<repo>/.cache`,
 `SAM31_REPO_ROOT` `<repo>/external/sam3`, `SAM31_CHECKPOINT`
@@ -31,7 +31,11 @@ Required: `SLURM_PARTITION`, `SLURM_ACCOUNT`, `VIDSTG_ROOT`, `VIDOR_ANN_ROOT`,
 Optional: `ANCHOR_POLICY` (human_gap), `MAX_ANCHORS` (16), `HQ_FALLBACK` (least-flagged),
 `MAX_GAP` (60), `GAP_FILL` (human), `KEEP_SPAN_EDGES` (1 adds `--keep-span-edges`),
 `CONTAINED_NEGATIVES` (1, the default, passes `--contained-negatives`; any other value passes
-`--no-contained-negatives`), `VIDS`, `VIDS_FILE`, `LIMIT`,
+`--no-contained-negatives`), `DIRECTION` (forward; `both` adds the backward pass and the merge),
+`AGREE_IOU` (0.3), `SPECK_FLOOR` (20), `SPECK_RATIO` (0.1), `DISPUTE_RULE` (refuse),
+`DISPUTE_SCORE` (unset; the threshold of `higher_score` / `forward_score`), `DISPUTE_WINNER`
+(weak) — the measured tie-break is `DIRECTION=both DISPUTE_RULE=higher_score DISPUTE_SCORE=0.907
+DISPUTE_WINNER=strong` (README, Backward pass and the merge), `VIDS`, `VIDS_FILE`, `LIMIT`,
 `WORKLIST_PATH` (point the workers at a subset worklist inside the same campaign),
 `ROOTS_FROM_ENV` (1 adds `--roots-from-env` to `process`, see Resuming), `ASSERT_COUNTS`
 (0 adds `--no-assert-counts` to `build-worklist`), `DOCTOR_FLAGS`, `EXPORT_PARTITION`

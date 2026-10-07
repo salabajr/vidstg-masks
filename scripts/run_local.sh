@@ -14,7 +14,7 @@ MAX_ANCHORS="${MAX_ANCHORS:-16}"
 MAX_GAP="${MAX_GAP:-60}"
 GAP_FILL="${GAP_FILL:-human}"
 CONTAINED_NEGATIVES="${CONTAINED_NEGATIVES:-1}"
-# Passes and merge (README, Backward pass and the merge); the dispute tie-break is off unless DISPUTE_RULE says otherwise.
+# Passes and merge (README, Settings that change the masks); the dispute tie-break is off unless DISPUTE_RULE says otherwise.
 DIRECTION="${DIRECTION:-forward}"
 AGREE_IOU="${AGREE_IOU:-0.3}"
 SPECK_FLOOR="${SPECK_FLOOR:-20}"

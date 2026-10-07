@@ -44,8 +44,9 @@ and `counts` (`units`, `by_split`, `video_missing`, `too_many_objects`, `prop_fr
 worker needs no data variables in its environment. `--roots-from-env` replaces the frozen
 roots with the environment variables / `--*-root` flags and rebases every unit's paths onto
 them: for a worklist built on a login node whose mount points differ from the compute nodes,
-or data that moved after the build. Without it a moved dataset fails every clip with
-`FileNotFoundError`. `submit_slurm.sh` sets the flag with `ROOTS_FROM_ENV=1` and skips the
+or data that moved after the build. Without it a moved annotation root fails every clip with
+`FileNotFoundError`, and a moved video root refuses every clip as `video_missing` (they count
+as done; `status` lists the refusals by reason). `submit_slurm.sh` sets the flag with `ROOTS_FROM_ENV=1` and skips the
 count assertion with `ASSERT_COUNTS=0`.
 
 ## Planning (CPU, `anchors.plan_clip`)
@@ -65,8 +66,8 @@ count assertion with `ASSERT_COUNTS=0`.
    keyframes, shrunk relative to the object's typical size, or blurred (Laplacian variance)
    are flagged; flag-free keyframes are kept, else the least-flagged (`--hq-fallback
    least-flagged`, recorded in provenance) or the object is refused (`no_hq_anchor`).
-6. `--anchor-policy human_gap` (the default) applies the coverage rule of step 5 to the human
-   plan without the gate (`anchor_quality.human_gap_plan`); it needs no video. Contained
+6. `--anchor-policy human_gap` (the default) applies the coverage rule ("Anchor policies" below)
+   to the human plan without the gate (`anchor_quality.human_gap_plan`); it needs no video. Contained
    negatives (on by default, any policy; `--no-contained-negatives` turns them off) add
    negative clicks and co-prompts for objects that contain another relation object
    (`anchors.add_contained_negatives`). `--anchor-policy human --no-contained-negatives` is
@@ -157,11 +158,13 @@ pass and merges them frame by frame (`merge.merge_passes`, the pixels rule; no b
    agreed partner shares with it (the partner is trimmed, and falls back or is refused as in step 2)
    and conflicts with another strong vote (`passes_conflict`). The record says `merge.tiebreak`
    (`rule`, `threshold`, both scores, `pick`, `taken`, `winner`). The measured setting is
-   `higher_score`, `T` 0.907, `strong` (README, Backward pass and the merge): on the 20 review
+   `higher_score`, `T` 0.907, `strong` (README, Settings that change the masks): on the 20 review
    clips 65 disputes went forward, 134 backward, 14 stayed refused under `T`, 2 were conflicts, and
    129 neighbouring masks were trimmed.
 
-Every record of a `both` run says `direction: bidirectional` and carries `prompt_payload.merge`:
+Every record of a `both` run says `direction: bidirectional`, and every record of a prompted object
+carries `prompt_payload.merge` (an object never prompted, because the clip was refused or it has no
+human keyframe, has none):
 the reading (`rule`), the `decision` (`forward`, `backward`, `refused`, `none`), the `source`
 pass, the overlap of the two masks, each candidate's size, share inside the VidOR box (for the
 reader; unused) and confidence, the `handover` when pixels moved, the `refused_reason`, and the
@@ -299,8 +302,8 @@ human_gap: the same prompts as before. Every `runs/<vid>.json` records `anchor_p
 - **span** — per tid: the clip's segment hull (interval hull of its records' `used_segment`s)
   intersected with the frames where the tid has a VidOR box. Every boxed frame in the span
   gets exactly one record.
-- **prop_span** — the hull of all tid spans of a clip: the interval SAM propagates over,
-  forward only.
+- **prop_span** — the hull of all tid spans of a clip: the interval SAM propagates over
+  (from its start in a forward pass, from its end in a backward pass).
 - **anchor** — a frame at which an object is prompted with its VidOR box (as two corner
   points); at most `--max-anchors` (16) per object before the gap rule puts keyframes back.
 - **reference anchor** — the anchor prompted first for an object: the human keyframe whose

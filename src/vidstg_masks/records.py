@@ -191,8 +191,10 @@ def validate_record(rec: dict) -> None:
                          "object that was never prompted)")
     if "direction" in pp and pp["direction"] not in PAYLOAD_DIRECTIONS:
         raise ValueError(f"prompt_payload.direction must be one of {PAYLOAD_DIRECTIONS}")
-    if pp.get("direction") == "bidirectional" and not isinstance(pp.get("merge"), dict):
-        raise ValueError("a bidirectional record carries prompt_payload.merge (the rule applied)")
+    # a prompted object of a both run says what the merge did on the frame; an object never
+    # prompted (a clip-level refusal, no human keyframe) has no merge to report
+    if pp.get("direction") == "bidirectional" and pp.get("anchor_fids") and not isinstance(pp.get("merge"), dict):
+        raise ValueError("a bidirectional record of a prompted object carries prompt_payload.merge (the rule applied)")
     if rec["box_generated"] not in (0, 1) or isinstance(rec["box_generated"], bool):
         raise ValueError("box_generated must be 0 (human) or 1 (tracker)")
     if rec["split"] not in SPLITS:

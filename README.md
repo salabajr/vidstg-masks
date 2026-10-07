@@ -74,9 +74,9 @@ $VIDOR_TRANSCODED_ROOT/<folder>/<vid>.mp4                     optional H.264 re-
 $VIDSTG_ROOT/annotations/{train,val,test}_annotations.json    VidSTG annotations
 ```
 
-The roots come from environment variables or `--*-root` flags. `.env.example` lists every
-variable; `examples/*.env` are complete settings for a smoke test, one split and the whole
-corpus. The worklist freezes the roots and every clip's paths; if the compute nodes mount
+The roots come from environment variables or `--*-root` flags. `.env.example` holds the data
+roots and the main Slurm settings; `examples/*.env` are complete settings for a smoke test, one
+split and the whole corpus; every launcher variable is in [docs/SLURM.md](docs/SLURM.md). The worklist freezes the roots and every clip's paths; if the compute nodes mount
 the data elsewhere, run `process` with `--roots-from-env`.
 
 ### On a CPU (a login node is enough)
@@ -85,8 +85,8 @@ the data elsewhere, run `process` with `--roots-from-env`.
 git clone https://github.com/salabajr/vidstg-masks.git && cd vidstg-masks
 INSTALL_GPU=0 bash scripts/setup.sh           # 1. virtual environment and the package, no torch
 source .venv/bin/activate
-pytest -q                                     # 2. 123 tests pass in a few seconds
-cp .env.example .env && $EDITOR .env          # 3. your data roots
+pytest -q                                     # 2. 124 tests pass in a few seconds
+cp .env.example .env && $EDITOR .env          # 3. your data roots (leave SAM31_CHECKPOINT commented for now)
 set -a && source .env && set +a
 vidstg-masks doctor --skip-hash --skip-gpu-libs           # 4. checks the roots, ffmpeg, dataset counts
 vidstg-masks build-worklist --split val --campaign-root outputs/smoke --vids 7639717122
@@ -100,6 +100,7 @@ videos, 26,016 relation objects and 7,835 VidOR annotation files.
 ```bash
 bash scripts/setup.sh                         # adds torch and the pinned sam3 checkout
 hf auth login && bash scripts/download_model.sh
+source .venv/bin/activate && set -a && source .env && set +a
 vidstg-masks process --worklist outputs/smoke/worklist.json --campaign-root outputs/smoke \
     --checkpoint "$SAM31_CHECKPOINT" --shard-index 0 --shard-count 1
 vidstg-masks export --worklist outputs/smoke/worklist.json --campaign-root outputs/smoke
@@ -161,8 +162,9 @@ command reads and writes: [docs/CLI.md](docs/CLI.md).
 
 ## Settings that change the masks
 
-Everything else is bookkeeping. Each of these is recorded in every `runs/<vid>.json` and
-in the records' `prompt_payload`, so a campaign's outputs say how it was run.
+Everything else is bookkeeping. Each of these is recorded in every `runs/<vid>.json`, and the
+records' `prompt_payload` carries the anchor policy, the gap fills, the negative clicks and, in a
+`both` run, the merge settings, so a campaign's outputs say how it was run.
 
 | flag (launcher variable) | default | what it does |
 |---|---|---|
@@ -244,7 +246,7 @@ src/vidstg_masks/
 schema/mask_record.schema.json    the record contract as JSON Schema
 scripts/             setup.sh, download_model.sh, run_local.sh, submit_slurm.sh
 slurm/process_array.slurm         one array task = one GPU = one shard
-tests/               123 CPU-only tests on synthetic annotations and a tiny video (pytest -q)
+tests/               124 CPU-only tests on synthetic annotations and a tiny video (pytest -q)
 examples/            complete .env files for a smoke test, the val split and the whole corpus
 docs/                the documentation listed below
 ```

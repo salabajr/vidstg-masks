@@ -29,6 +29,10 @@ refused as `decode_black` or `frame_size_mismatch`, verifies each re-encode agai
 annotation, moves the refusal records to `<campaign>/superseded/` and points the worklist unit
 at the new file, so the next `process` runs the clip. New `video.probe_size`.
 
+**Records.** The validator no longer rejects the records of a `both` run for objects that were never
+prompted (a clip-level refusal, or an object without a human keyframe): they say `bidirectional`
+and carry no merge block. Before, `export` listed them as invalid and left them out of the tables.
+
 **Render.** A label `tid:category` at each box, `(no mask)` where the object has a box but no
 mask; `--side-by-side` (the untouched frame on the left, the painted one on the right);
 `--crf`; `--no-labels`.
@@ -43,7 +47,7 @@ the tracker state offloaded), capping the tasks per node with `CPUS_PER_TASK` wh
 not enforced, `STAGE_CHECKPOINT` on a RAM-backed `/tmp`. New `docs/GETTING_STARTED.md`,
 `docs/CLI.md`, `docs/CODE_STRUCTURE.md`, this changelog; the README rewritten around them.
 
-Tests: 123.
+Tests: 124.
 
 ## 0.1.0 (branch `main`)
 
@@ -51,4 +55,4 @@ The first release: worklist, claims, the shard worker with a fresh subprocess pe
 pre-checks, the `human`, `human_gap` (default) and `hq` anchor policies, contained negatives,
 one forward SAM 3.1 Object Multiplex pass, records with full provenance and refusal codes,
 `export` with the integrity check, `export-concor`, `render`, `transcode`, `doctor`, `status`,
-`plan`, the local and Slurm launchers. 116 tests.
+`plan`, the local and Slurm launchers. 103 tests.

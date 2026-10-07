@@ -35,7 +35,7 @@ Optional: `ANCHOR_POLICY` (human_gap), `MAX_ANCHORS` (16), `HQ_FALLBACK` (least-
 `AGREE_IOU` (0.3), `SPECK_FLOOR` (20), `SPECK_RATIO` (0.1), `DISPUTE_RULE` (refuse),
 `DISPUTE_SCORE` (unset; the threshold of `higher_score` / `forward_score`), `DISPUTE_WINNER`
 (weak) — the measured tie-break is `DIRECTION=both DISPUTE_RULE=higher_score DISPUTE_SCORE=0.907
-DISPUTE_WINNER=strong` (README, Backward pass and the merge), `VIDS`, `VIDS_FILE`, `LIMIT`,
+DISPUTE_WINNER=strong` (README, Settings that change the masks), `VIDS`, `VIDS_FILE`, `LIMIT`,
 `WORKLIST_PATH` (point the workers at a subset worklist inside the same campaign),
 `ROOTS_FROM_ENV` (1 adds `--roots-from-env` to `process`, see Resuming), `ASSERT_COUNTS`
 (0 adds `--no-assert-counts` to `build-worklist`), `DOCTOR_FLAGS`, `EXPORT_PARTITION`
@@ -88,7 +88,7 @@ and runs on the login node; `submit_slurm.sh` prints the exact command when it e
 `$CAMPAIGN_ROOT/slurm_logs/worker-<array>_<task>.out` is one file per task across requeues
 (`--open-mode=append`); its lines start `[clip]`, `[committed]`, `[interrupted]`, `[refused]`,
 `[oom]`, `[failed]`, `[drain]`. `$CAMPAIGN_ROOT/submissions.txt` gets one line per
-`submit_slurm.sh` run, `<utc time> worker_array=<id> export=<id> split=<split> workers=<n>`,
+`submit_slurm.sh` run, `<utc time> worker_array=<id> export=<id> split=<split> workers=<n> direction=<d> dispute=<rule>/<score or none>/<winner>`,
 for `squeue -j` and `sacct -j`.
 
 ## Resuming
@@ -104,7 +104,8 @@ unit as they were on the node that built it. If the compute nodes mount the data
 or the data moved after the build, submit with `ROOTS_FROM_ENV=1`: `process_array.slurm` then
 passes `--roots-from-env` to `process`, which takes the roots from the job environment
 (`submit_slurm.sh` exports them) and rebases every unit's paths onto them. Without it every
-clip fails with `FileNotFoundError`.
+clip fails with `FileNotFoundError` (the annotation root moved) or is refused as `video_missing`
+(the video root moved; those count as done, so check `status`'s refusals by reason).
 
 ## Staging and caches
 

@@ -39,7 +39,8 @@ vidstg-masks doctor [roots] [--checkpoint FILE] [--sam3-repo DIR] [--skip-hash] 
 
 Checks, one `[OK  ]` / `[FAIL]` / `[--  ]` line each: the four roots and the three VidSTG
 files exist; ffmpeg and ffprobe are on the PATH; numpy, cv2, pycocotools and pyarrow import;
-torch and sam3 import and see a GPU (unless `--skip-gpu-libs`); the sam3 checkout is at the
+whether torch and sam3 import and see a GPU (reported, never a failure; `--skip-gpu-libs` skips
+the import); the sam3 checkout is at the
 pinned commit (`--sam3-repo`); the checkpoint exists and has the pinned sha256 (`--checkpoint`;
 `--skip-hash` skips the 3.5 GB read); the annotation set carries the release counts (44,808
 VidSTG records, 6,770 videos, 26,016 relation objects, 7,835 VidOR files; `--skip-facts`
@@ -84,8 +85,8 @@ object's anchors (how many of its human keyframes, the reference anchor and its 
 the other objects, the gap rule's fills), the negative clicks and co-prompts. The policy flags
 are those of `process` (`--anchor-policy`, `--max-anchors`, `--max-gap`, `--gap-fill`,
 `--hq-fallback`, `--keep-span-edges`, `--contained-negatives`); the merge flags are accepted
-for symmetry and ignored. Under `--anchor-policy hq` the gate's verdict per keyframe is printed
-too (this reads the video).
+for symmetry and ignored. Under `--anchor-policy hq` a one-line summary of the gate per object
+(kept, dropped and why, fills) is printed too; this reads the video.
 
 ```bash
 vidstg-masks plan --worklist outputs/val/worklist.json --vids 7639717122 2953174101
@@ -210,11 +211,12 @@ vidstg-masks export-concor --worklist FILE --campaign-root DIR [--output-dir DIR
 ```
 
 Writes the same masks in the ConCor Video record format under `export/concor/`: one record
-per relation (`records/<sample_id>.json`, captioned relations only, each validated with the
-rules of their validator), `samples.parquet`, `tracklets.parquet` (every relation), `links.parquet`,
+per relation (`records/<sample_id>.json` with `:` written as `_`, captioned relations only, each
+validated with the rules of their validator), `samples.parquet`, `tracklets.parquet` (every relation), `links.parquet`,
 `verification.parquet` and a manifest. `--captions captions.jsonl` supplies each relation's
 caption and the character spans of its objects; without it only `tracklets.parquet` is
-filled. Field mapping and open points: [docs/CONCOR_VIDEO.md](CONCOR_VIDEO.md).
+filled. Exit code 1 when a captioned record fails validation or an annotation is missing (the
+problems are in the manifest). Field mapping and open points: [docs/CONCOR_VIDEO.md](CONCOR_VIDEO.md).
 
 ```bash
 vidstg-masks export-concor --worklist outputs/val/worklist.json --campaign-root outputs/val --captions captions.jsonl
@@ -233,7 +235,7 @@ but no mask (`--no-labels` turns the labels off), and a banner with the video id
 relations and the colour of each object. `--side-by-side` writes the untouched frame on the
 left and the painted one on the right, each captioned. H.264, `--crf` 20 by default (27 is
 about half the size). Default output `<campaign>/overlays/<vid>.mp4`. CPU only; the frames
-are never part of a release.
+are never part of a release. Exit code 1 when the clip has no records.
 
 ```bash
 vidstg-masks render --vid 7639717122 --campaign-root outputs/val --side-by-side --crf 27
@@ -254,7 +256,8 @@ campaign refused as `decode_black` or `frame_size_mismatch`, whose refusal recor
 `records/`, `errors/`) are then moved to `<campaign>/superseded/<kind>/` and whose worklist
 unit is pointed at the new file, so the next `process` runs the clip; with `--worklist
 --all-black`, every unit whose video decodes black (probed now). Requires
-`VIDOR_TRANSCODED_ROOT`.
+`VIDOR_TRANSCODED_ROOT`. Exit code 1 when a source file is missing or a re-encode fails the
+frame-count, size or black check (that file is not used).
 
 ```bash
 vidstg-masks transcode --worklist outputs/val/worklist.json --campaign-root outputs/val

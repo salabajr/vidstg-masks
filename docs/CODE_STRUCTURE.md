@@ -2,7 +2,8 @@
 
 What each module owns, how one clip travels through them, where a change belongs, and what
 the tests cover. The package is `src/vidstg_masks/`, about 4,200 lines; `torch` and `sam3` are
-imported inside functions of `sam_session.py` and `sam3_compat.py` only, so every other module
+imported inside functions of `sam_session.py` and `sam3_compat.py` (and, guarded, in `doctor`'s
+GPU-library check), so every other module
 runs on a CPU-only machine (`tests/test_no_torch.py` checks that).
 
 ## The modules
@@ -10,7 +11,7 @@ runs on a CPU-only machine (`tests/test_no_torch.py` checks that).
 | module | lines | owns | key functions |
 |---|---|---|---|
 | `cli.py` | 576 | the `vidstg-masks` command: the parser, one `cmd_*` function per subcommand, the dispute-settings check, the transcode re-queue | `main`, `cmd_doctor`, `cmd_build_worklist`, `cmd_process`, `cmd_process_one`, `cmd_status`, `cmd_export`, `cmd_export_concor`, `cmd_render`, `cmd_transcode`, `requeue_refused_unit` |
-| `datasets.py` | 250 | reading VidSTG and VidOR, the dataset roots (`Roots`), the known counts, finding a clip's video | `load_vidstg`, `build_vidor_index`, `load_vidor`, `boxes_for_tid`, `resolve_video`, `rebase_unit_paths`, `assert_known_counts`, `known_facts_check` |
+| `datasets.py` | 251 | reading VidSTG and VidOR, the dataset roots (`Roots`), the known counts, finding a clip's video | `load_vidstg`, `build_vidor_index`, `load_vidor`, `boxes_for_tid`, `resolve_video`, `rebase_unit_paths`, `assert_known_counts`, `known_facts_check` |
 | `anchors.py` | 295 | the plan of a clip from the annotations alone: object set, spans, anchors, prompts as relative boxes, contained negatives | `plan_clip`, `apply_anchor_policy`, `prompts_for_plan`, `add_contained_negatives`, `in_span_fids`, `describe_plan` |
 | `anchor_quality.py` | 456 | the gap rule (`_fill_gaps`) shared by `human_gap` and `hq`, and the `hq` quality gate over keyframes (edge, overlap, motion, size, blur) | `human_gap_plan`, `apply_hq_policy`, `hq_plan_for`, `keyframe_metrics`, `Thresholds` |
 | `video.py` | 113 | probing and decoding checks, the H.264 transcode | `decode_check`, `is_black`, `probe_frame_count`, `probe_size`, `transcode_h264` |
@@ -47,9 +48,9 @@ cli.cmd_process
    └─ worker._run_unit                 attempts, OOM retry with offload, interruption bookkeeping
       └─ worker.subprocess_runner      `vidstg-masks process-one` in a fresh process
          └─ cli.cmd_process_one -> worker.process_one_main -> worker.run_clip
-            ├─ worker.plan_unit        anchors.plan_clip -> anchors.apply_anchor_policy
-            │                          (anchor_quality.human_gap_plan / hq_plan_for)
+            ├─ worker.plan_unit        anchors.plan_clip: the human plan
             ├─ worker.precheck_clip    video.decode_check: frame count, size, black
+            ├─ anchors.apply_anchor_policy   anchor_quality.human_gap_plan / hq_plan_for, after the pre-checks
             ├─ anchors.prompts_for_plan + anchors.add_contained_negatives
             ├─ sam_session.run_session(direction="forward")      masks + scores per frame and object
             ├─ sam_session.run_session(direction="backward")     --direction both or backward only
@@ -98,7 +99,7 @@ decodes the video again and paints the records.
 
 ## The tests
 
-`pytest -q` runs 123 tests in a few seconds on a CPU. `tests/conftest.py` builds a synthetic
+`pytest -q` runs 124 tests in a few seconds on a CPU. `tests/conftest.py` builds a synthetic
 dataset in a temporary directory (four videos with the shapes of the real files: human and
 tracker boxes, a clip with 17 objects, a clip whose video is missing) and a 12-frame mp4; no
 real data or model is touched. `tests/test_worker.py` drives `process` with a fake clip runner
@@ -110,9 +111,9 @@ that writes records without a GPU.
 | `test_anchors.py` | 12 | spans, the reference anchor, thinning, contained negatives, prompt packing |
 | `test_anchor_quality.py` | 9 | the gate flags, the fallback, the gap rule |
 | `test_video.py` | 5 | decode checks, the black probe, the transcode (odd sizes kept) |
-| `test_worker.py` | 22 | worklist and its count assertion, claims (exclusive, stale, concurrent), shard order, resume, status transitions, OOM retry, interruption, `--roots-from-env`, the subprocess command, `run_clip` with gap fills, negatives, both directions |
+| `test_worker.py` | 23 | worklist and its count assertion, claims (exclusive, stale, concurrent), shard order, resume, status transitions, OOM retry, interruption, `--roots-from-env`, the subprocess command, `run_clip` with gap fills, negatives, both directions |
 | `test_merge.py` | 13 | the readings, the pixels rule, the handover, the three dispute rules and both winners, the settings check |
-| `test_records.py` | 8 | provenance, RLE round trip, atomic writes, validation |
+| `test_records.py` | 22 (8 functions, one over every provenance field) | provenance, RLE round trip, atomic writes, validation |
 | `test_sam_session.py` | 8 | the request sequence of a session against a stub predictor, closing on error, the score merge, the offload rule, clicks riding with the box corners, the prompt cap, the backward request |
 | `test_export.py` | 4 | tables, ledger, manifest; missing and duplicate records, corrupt provenance, `--no-integrity` with pending clips |
 | `test_concor.py` | 4 | the record, the validator, the tables |

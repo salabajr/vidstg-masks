@@ -5,7 +5,7 @@ where a change belongs is in [docs/CODE_STRUCTURE.md](docs/CODE_STRUCTURE.md).
 
 ## Before opening a pull request
 
-- `pytest -q` passes (CPU only, a few seconds; 123 tests on synthetic annotations and a tiny
+- `pytest -q` passes (CPU only, a few seconds; 124 tests on synthetic annotations and a tiny
   generated video). Add a test when changing dataset parsing (`datasets.py`), anchor selection
   (`anchors.py`, `anchor_quality.py`), the merge (`merge.py`), checkpoint recovery (`worker.py`:
   claims, errors, interruption, retries), the record contract (`records.py`,

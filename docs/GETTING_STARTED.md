@@ -34,7 +34,7 @@ environment=/path/to/vidstg-masks/.venv
 install_gpu=0 (no torch, no sam3; tests, doctor --skip-gpu-libs, export and status work)
 ```
 
-`pytest -q` ends with `123 passed`. The tests use synthetic annotations and a tiny generated
+`pytest -q` ends with `124 passed`. The tests use synthetic annotations and a tiny generated
 video; they never read the dataset.
 
 The pip and Hugging Face caches go under `<repo>/.cache` (or `VIDSTG_MASKS_CACHE_ROOT`), not
@@ -44,7 +44,7 @@ under `$HOME`: a full, quota-limited home directory is the usual first failure o
 
 ```bash
 cp .env.example .env
-$EDITOR .env               # VIDSTG_ROOT, VIDOR_ANN_ROOT, VIDOR_VIDEO_ROOT at least
+$EDITOR .env               # VIDSTG_ROOT, VIDOR_ANN_ROOT, VIDOR_VIDEO_ROOT; leave SAM31_CHECKPOINT commented until step 5
 set -a && source .env && set +a
 ```
 
@@ -58,7 +58,9 @@ $VIDOR_VIDEO_ROOT/<folder>/<vid>.mp4      the annotation's video_path
 ```
 
 Every root can also be given as a flag (`--vidstg-root`, `--vidor-ann-root`,
-`--vidor-video-root`, `--vidor-transcoded-root`), which overrides the variable.
+`--vidor-video-root`, `--vidor-transcoded-root`), which overrides the variable. `doctor` checks
+`SAM31_CHECKPOINT` whenever it is set, and the file exists only after step 5, so keep the line
+commented until then (the launchers default to `<repo>/checkpoints/sam3.1/sam3.1_multiplex.pt`).
 
 ## 3. Check the installation and the data
 
@@ -108,15 +110,15 @@ vidstg-masks build-worklist --split val --campaign-root outputs/smoke --vids 763
 
 ```
 {
- "worklist": "outputs/smoke/worklist.json",
+ "worklist": "/path/to/vidstg-masks/outputs/smoke/worklist.json",
  "counts": {
-  "by_split": {"val": 1},
-  "frames": 507,
-  "prop_frame_objects": 2535,
-  "relation_tids": 5,
-  "too_many_objects": 0,
   "units": 1,
-  "video_missing": 0
+  "by_split": {"val": 1},
+  "video_missing": 0,
+  "too_many_objects": 0,
+  "relation_tids": 5,
+  "frames": 124,
+  "prop_frame_objects": 620
  }
 }
 ```
@@ -258,8 +260,8 @@ set -a; source examples/val.env; set +a; bash scripts/run_local.sh      # one GP
 set -a; source examples/val.env; set +a; bash scripts/submit_slurm.sh   # a Slurm array
 ```
 
-Copy the example file and edit the paths; every variable is explained in it and in
-[docs/SLURM.md](SLURM.md). Running the same command again on the same `CAMPAIGN_ROOT`
+Copy the example file and edit the paths; the file names the usual settings, and every
+launcher variable is in [docs/SLURM.md](SLURM.md). Running the same command again on the same `CAMPAIGN_ROOT`
 resumes: finished clips are skipped, interrupted ones retried.
 
 The backward pass and the measured dispute tie-break (twice the GPU time, fewer frames
@@ -282,7 +284,8 @@ or the same four flags on `process`: `--direction both --dispute-rule higher_sco
 | `doctor`: `sam3 commit ... != pinned` | the sam3 checkout moved | `bash scripts/setup.sh` checks out the pinned commit again |
 | `download_model.sh`: 401 or 403 | the account has not accepted the gate, or is not logged in | accept the gate at huggingface.co/facebook/sam3.1, `hf auth login` |
 | `download_model.sh`: `checkpoint sha256 mismatch` | a different or truncated file | the script removes it; download again |
-| `process`: every clip fails with `FileNotFoundError` | the worklist was built on a host with other mount points | run `process --roots-from-env` (or `ROOTS_FROM_ENV=1` for the launchers) with the roots set for this host |
+| `doctor`: `[FAIL] checkpoint: ... missing` on a CPU node | `SAM31_CHECKPOINT` is set but the file is not downloaded yet | comment the line out until `download_model.sh` has run |
+| `process`: every clip fails with `FileNotFoundError`, or every clip is refused as `video_missing` | the worklist was built on a host with other mount points (the annotation root moved, or the video root) | run `process --roots-from-env` (or `ROOTS_FROM_ENV=1` for the launchers) with the roots set for this host |
 | a clip is refused `decode_black` | a VP6F video that OpenCV decodes black | set `VIDOR_TRANSCODED_ROOT`, run `vidstg-masks transcode --worklist ... --campaign-root ...`, then `process` again |
 | a clip is refused `frame_count_mismatch` or `frame_size_mismatch` | the video file does not match its annotation | check the file; the pipeline never rescales indices |
 | `[oom]` in the worker log | the clip did not fit in VRAM | the retry with `--force-offload` is automatic; a second OOM is a terminal failure |

@@ -70,7 +70,7 @@ drops nothing silently: a span for an object without masks leaves the record
 
 ```
 <campaign>/export/concor/
-  records/<sample_id>.json      captioned relations only, each validated
+  records/<sample_id>.json      captioned relations only, each validated (`:` in the id written as `_`)
   samples.parquet               their SAMPLE_SCHEMA
   tracklets.parquet             their TRACKLET_SCHEMA, every relation (captioned or not)
   links.parquet                 their LINK_SCHEMA

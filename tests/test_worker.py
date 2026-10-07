@@ -156,6 +156,32 @@ def test_clip_records_masks_and_refusals(roots, base_prov):
         validate_record(r)
 
 
+def test_clip_records_of_a_both_run_validate_for_objects_never_prompted(roots, base_prov):
+    """A both run: a prompted object's record carries the merge block; an object refused at
+    planning (tid 2, no human keyframe) and a clip-level refusal say `bidirectional` without one,
+    and still validate (export excluded them as invalid before)."""
+    wl = build_worklist(roots, "train")
+    plan, _ = plan_unit(wl["units"][0], roots, 16, "human")
+    m = np.zeros((48, 64), bool)
+    m[10:30, 10:30] = True
+    per_frame = {f: {0: (m, 0.9), 1: (m, 0.8)} for f in range(12)}
+    merge_prov = {(t, f): {"rule": "agree", "decision": "forward"} for t in (0, 1) for f in range(12)}
+    recs, _ = clip_records(plan, per_frame, base_prov, merge_prov=merge_prov, direction="both")
+    by = {(r["tid"], r["fid"]): r for r in recs}
+    assert by[(0, 3)]["prompt_payload"]["direction"] == "bidirectional"
+    assert by[(0, 3)]["prompt_payload"]["merge"] == {"rule": "agree", "decision": "forward"}
+    assert by[(2, 3)]["reason_code"] == "no_human_keyframe" and by[(2, 3)]["prompt_payload"]["merge"] is None
+    for r in recs:
+        validate_record(r)
+    refused, _ = clip_records(plan, {}, base_prov, clip_reason="decode_black", direction="both")
+    assert refused and all(r["prompt_payload"]["direction"] == "bidirectional" for r in refused)
+    for r in refused:
+        validate_record(r)
+    bad = dict(by[(0, 3)], prompt_payload=dict(by[(0, 3)]["prompt_payload"], merge=None))
+    with pytest.raises(ValueError, match="prompted object carries prompt_payload.merge"):
+        validate_record(bad)
+
+
 # ── the shard worker with an injected clip runner ───────────────────────────
 
 def fake_runner(roots, campaign, calls):

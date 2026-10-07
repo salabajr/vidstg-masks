@@ -21,7 +21,7 @@ MAX_GAP="${MAX_GAP:-60}"
 GAP_FILL="${GAP_FILL:-human}"
 KEEP_SPAN_EDGES="${KEEP_SPAN_EDGES:-0}"
 CONTAINED_NEGATIVES="${CONTAINED_NEGATIVES:-1}"   # 1 -> --contained-negatives, anything else -> --no-contained-negatives
-# Passes and merge (README, Backward pass and the merge): DIRECTION both runs the backward pass too and merges;
+# Passes and merge (README, Settings that change the masks): DIRECTION both runs the backward pass too and merges;
 # the dispute tie-break is off (refuse) unless DISPUTE_RULE / DISPUTE_SCORE / DISPUTE_WINNER say otherwise.
 DIRECTION="${DIRECTION:-forward}"
 AGREE_IOU="${AGREE_IOU:-0.3}"

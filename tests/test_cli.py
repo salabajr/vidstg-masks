@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import shutil
 
 import pytest
@@ -214,6 +215,11 @@ def test_transcode_requeues_the_clips_it_repairs(data, tmp_path, monkeypatch):
     assert (c / "superseded" / "errors" / f"{vids[0]}.json").is_file()
     assert unit_status(wl["units"][0], c)["status"] == "pending"
     assert (c / "runs" / f"{vids[1]}.json").is_file() and unit_status(wl["units"][1], c)["status"] == "done"
+    # the worklist now names the repaired file: the worker reads the unit's frozen video_path, not the roots
+    wl2 = load_worklist(c / "worklist.json")
+    u0 = next(u for u in wl2["units"] if u["vid"] == vids[0])
+    assert Path(u0["video_path"]).resolve() == (out / Path(wl["units"][0]["video_path"]).relative_to(data["videos"])).resolve()
+    assert next(u for u in wl2["units"] if u["vid"] == vids[1])["video_path"] == wl["units"][1]["video_path"]
     # a re-encode that does not match the annotation leaves the refusal in place and fails the command
     monkeypatch.setattr(video, "probe_size", lambda p: (W + 1, H))
     (c / "runs" / f"{vids[0]}.json").write_text(json.dumps({"vid": vids[0], "status": "refused", "reason": "frame_size_mismatch"}))

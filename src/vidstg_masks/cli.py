@@ -517,20 +517,25 @@ def cmd_transcode(args) -> int:
         if not ok:
             rc = 1
         elif args.campaign_root:
-            moved = requeue_refused_unit(args.campaign_root, vid)
+            moved = requeue_refused_unit(args.campaign_root, vid, dst)
             if moved:
-                print(f"{vid}: refusal records moved to {args.campaign_root / 'superseded'}; the clip is pending again")
+                print(f"{vid}: refusal records moved to {args.campaign_root / 'superseded'}, worklist video_path -> {dst}; "
+                      "the clip is pending again")
     return rc
 
 
 REQUEUE_REASONS = ("decode_black", "frame_size_mismatch")
 
 
-def requeue_refused_unit(campaign_root: Path, vid: str) -> bool:
+def requeue_refused_unit(campaign_root: Path, vid: str, new_video: Path | None = None) -> bool:
     """A clip the campaign refused for a video defect that a transcode repairs (REQUEUE_REASONS):
     move its runs/, records/ and errors/ files under <campaign>/superseded/<kind>/, keeping them for
-    the record, so `unit_status` sees the clip as pending. Returns False when the run was not such
-    a refusal (nothing is touched)."""
+    the record, so `unit_status` sees the clip as pending; and point the unit's `video_path` in
+    <campaign>/worklist.json at `new_video` (the worklist froze the path of the video that failed,
+    and the worker reads that path, not the transcoded root). Returns False when the run was not
+    such a refusal (nothing is touched)."""
+    from .records import write_json_atomic
+
     rp = campaign_root / "runs" / f"{vid}.json"
     if not rp.is_file() or json.loads(rp.read_text()).get("reason") not in REQUEUE_REASONS:
         return False
@@ -540,6 +545,13 @@ def requeue_refused_unit(campaign_root: Path, vid: str) -> bool:
             dst = campaign_root / "superseded" / kind / name
             dst.parent.mkdir(parents=True, exist_ok=True)
             src.replace(dst)
+    wl_path = campaign_root / "worklist.json"
+    if new_video is not None and wl_path.is_file():
+        wl = json.loads(wl_path.read_text())
+        for u in wl["units"]:
+            if u["vid"] == vid:
+                u["video_path"] = str(Path(new_video).resolve())
+        write_json_atomic(wl_path, wl)
     return True
 
 

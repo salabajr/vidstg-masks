@@ -87,7 +87,7 @@ INSTALL_GPU=0 bash scripts/setup.sh           # 1. virtual environment and the p
 source .venv/bin/activate
 pytest -q                                     # 2. 126 tests pass in a few seconds
 cp .env.example .env && $EDITOR .env          # 3. your data roots (leave SAM31_CHECKPOINT commented for now)
-set -a && source .env && set +a
+set -a && source ./.env && set +a
 vidstg-masks doctor --skip-hash --skip-gpu-libs           # 4. checks the roots, ffmpeg, dataset counts
 vidstg-masks build-worklist --split val --campaign-root outputs/smoke --vids 7639717122
 ```
@@ -100,7 +100,7 @@ videos, 26,016 relation objects and 7,835 VidOR annotation files.
 ```bash
 bash scripts/setup.sh                         # adds torch and the pinned sam3 checkout
 hf auth login && bash scripts/download_model.sh
-source .venv/bin/activate && set -a && source .env && set +a
+source .venv/bin/activate && set -a && source ./.env && set +a
 vidstg-masks process --worklist outputs/smoke/worklist.json --campaign-root outputs/smoke \
     --checkpoint "$SAM31_CHECKPOINT" --shard-index 0 --shard-count 1
 vidstg-masks export --worklist outputs/smoke/worklist.json --campaign-root outputs/smoke

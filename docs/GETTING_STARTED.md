@@ -45,7 +45,7 @@ under `$HOME`: a full, quota-limited home directory is the usual first failure o
 ```bash
 cp .env.example .env
 $EDITOR .env               # VIDSTG_ROOT, VIDOR_ANN_ROOT, VIDOR_VIDEO_ROOT; leave SAM31_CHECKPOINT commented until step 5
-set -a && source .env && set +a
+set -a && source ./.env && set +a
 ```
 
 The three roots are required by every command that reads annotations. The layout expected
@@ -155,7 +155,7 @@ On a node with a GPU:
 bash scripts/setup.sh                        # adds torch (CUDA 12.8 wheels) and the pinned sam3 checkout
 hf auth login                                # once; the account must have accepted the facebook/sam3.1 gate
 bash scripts/download_model.sh               # checkpoints/sam3.1/sam3.1_multiplex.pt, sha256 verified
-set -a && source .env && set +a
+set -a && source ./.env && set +a
 vidstg-masks process --worklist outputs/smoke/worklist.json --campaign-root outputs/smoke \
     --checkpoint checkpoints/sam3.1/sam3.1_multiplex.pt --shard-index 0 --shard-count 1
 ```
@@ -279,7 +279,8 @@ or the same four flags on `process`: `--direction both --dispute-rule higher_sco
 
 | symptom | cause | what to do |
 |---|---|---|
-| `doctor`: `[FAIL] vidstg_root ... (missing)` | the variable is unset or points elsewhere | `set -a && source .env && set +a`, or pass `--vidstg-root` |
+| `doctor`: `[FAIL] roots: 'missing roots: VIDSTG_ROOT, ...'` right after sourcing `.env` | `source .env` without a slash looks for `.env` on your `PATH` first, and another project's `.env` there won in silence | `source ./.env` (the slash makes it the file in this directory) |
+| `doctor`: `[FAIL] vidstg_root ... (missing)` | the variable is unset or points elsewhere | `set -a && source ./.env && set +a`, or pass `--vidstg-root` |
 | `doctor`: `known fact vidstg_records: 20 (expected 44,808)` | a partial or altered copy of the annotations | get the release files; for a deliberate subset, `build-worklist --no-assert-counts` |
 | `doctor`: `sam3 commit ... != pinned` | the sam3 checkout moved | `bash scripts/setup.sh` checks out the pinned commit again |
 | `download_model.sh`: 401 or 403 | the account has not accepted the gate, or is not logged in | accept the gate at huggingface.co/facebook/sam3.1, `hf auth login` |

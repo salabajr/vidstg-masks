@@ -231,8 +231,8 @@ vidstg-masks render [roots] --vid VID --campaign-root DIR [--out FILE] [--alpha 
 A QA video of one clip from its records: every written mask tinted in its object's colour
 (`--alpha`, default 0.45), each object's VidOR box (thick at a human keyframe, thin at a
 tracker box), a label `tid:category` at each box with `(no mask)` where the object has a box
-but no mask (`--no-labels` turns the labels off), and a banner with the video id, the
-relations and the colour of each object. `--side-by-side` writes the untouched frame on the
+but no mask (`--no-labels` turns the labels off), and a banner strip under the frame with the
+video id, the relations and the colour of each object. `--side-by-side` writes the untouched frame on the
 left and the painted one on the right, each captioned. H.264, `--crf` 20 by default (27 is
 about half the size). Default output `<campaign>/overlays/<vid>.mp4`. CPU only; the frames
 are never part of a release. Exit code 1 when the clip has no records.

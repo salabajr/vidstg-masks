@@ -225,7 +225,8 @@ validates every record against the schema. Problems are listed in the manifest a
 `vidstg-masks render` decodes the clip once more and writes an H.264 video from the records:
 every written mask tinted in its object's colour, each object's VidOR box (thick at a human
 keyframe, thin at a tracker box), a label `tid:category` at the box with `(no mask)` where the
-object has a box but no record with a mask, and a banner with the relations and the legend.
+object has a box but no record with a mask, and a banner strip under the frame with the
+relations and the legend.
 `--side-by-side` puts the untouched frame on the left and the painted one on the right. The
 video is for eyes only; it is written under `<campaign>/overlays/` and is never part of an
 export.

@@ -67,7 +67,8 @@ def test_render_cli_writes_h264(roots, tmp_path):
     assert out.stat().st_size > 0
     from vidstg_masks.video import decode_check, probe_size
     assert decode_check(out, 12)["frame_count_ok"]
-    assert probe_size(out) == (W, H)
+    w, h = probe_size(out)
+    assert w == W and h > H                                 # the banner strip sits under the frame
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
@@ -80,7 +81,8 @@ def test_render_side_by_side_doubles_the_width(roots, tmp_path):
                 "--side-by-side", "--crf", "28", "--no-labels"]) == 0
     from vidstg_masks.video import decode_check, probe_size
     assert decode_check(out, N_FRAMES)["frame_count_ok"]
-    assert probe_size(out) == (2 * W, H)
+    w, h = probe_size(out)
+    assert w == 2 * W and h > H
 
 
 def test_status_cli(roots, tmp_path, capsys):

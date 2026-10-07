@@ -1,8 +1,8 @@
 """QA overlay: one H.264 mp4 per clip with per-tid tinted masks, VidOR boxes (thick =
 human keyframe, thin = tracker box), a label at each box (`<tid>:<category>`, with
-"(no mask)" on a frame where the object has a box but no mask) and a banner (relations,
-per-tid legend). CPU only; frames go to ffmpeg through a pipe. Output stays outside any
-release artifact."""
+"(no mask)" on a frame where the object has a box but no mask) and a banner strip under the
+frame (video id, relations, per-tid legend). CPU only; frames go to ffmpeg through a pipe.
+Output stays outside any release artifact."""
 
 from __future__ import annotations
 
@@ -61,9 +61,10 @@ def render_overlay(vid: str, records_path: Path, roots: Roots, out_mp4: Path,
                    relations=None, alpha: float = 0.45, crf: int = 20, labels: bool = True,
                    side_by_side: bool = False) -> int:
     """Decode the clip's video sequentially, tint each frame with that frame's masks, draw
-    each object's box and label, and encode with libx264 (odd sizes padded by one pixel).
-    With `side_by_side` every output frame is the untouched frame on the left and the
-    painted one on the right, each captioned, for a review page. Returns frames written."""
+    each object's box and label, add the banner strip under the frame, and encode with libx264
+    (odd sizes padded by one pixel). With `side_by_side` every output frame is the untouched
+    frame on the left and the painted one on the right, each captioned, for a review page.
+    Returns frames written."""
     import cv2
 
     ann = load_vidor(build_vidor_index(roots)[vid])
@@ -80,8 +81,10 @@ def render_overlay(vid: str, records_path: Path, roots: Roots, out_mp4: Path,
     tids_sorted = sorted(tids)
     colors = {t: PALETTE[k % len(PALETTE)] for k, t in enumerate(tids_sorted)}
     cats = {o["tid"]: o["category"] for o in ann["subject/objects"]}
-    banner = _banner_lines(vid, relations or [], cats, colors, W)
+    out_w = 2 * W if side_by_side else W
+    banner = _banner_lines(vid, relations or [], cats, colors, out_w)
     banner_h = 8 + 18 * len(banner)
+    out_h = H + banner_h
     boxes = {t: {} for t in tids_sorted}
     for fid, frame in enumerate(ann["trajectories"]):
         for b in frame:
@@ -90,10 +93,9 @@ def render_overlay(vid: str, records_path: Path, roots: Roots, out_mp4: Path,
 
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
     tmp = out_mp4.with_suffix(out_mp4.suffix + ".part")
-    out_w = 2 * W if side_by_side else W
     ff = subprocess.Popen(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24",
-         "-s", f"{out_w}x{H}", "-r", f"{ann['fps']:.6f}", "-i", "-", "-vsync", "0",
+         "-s", f"{out_w}x{out_h}", "-r", f"{ann['fps']:.6f}", "-i", "-", "-vsync", "0",
          "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-c:v", "libx264", "-pix_fmt", "yuv420p",
          "-crf", str(crf), "-f", "mp4", str(tmp)], stdin=subprocess.PIPE)
     cap = cv2.VideoCapture(str(video))
@@ -118,7 +120,6 @@ def render_overlay(vid: str, records_path: Path, roots: Roots, out_mp4: Path,
                     b = box["bbox"]
                     cv2.rectangle(frame, (b["xmin"], b["ymin"]), (b["xmax"], b["ymax"]), colors[t],
                                   2 if box.get("generated", 0) == 0 else 1)
-            frame[:banner_h] = (frame[:banner_h] * 0.35).astype(np.uint8)
             if labels:
                 for t in tids_sorted:
                     box = boxes[t].get(fid)
@@ -128,19 +129,21 @@ def render_overlay(vid: str, records_path: Path, roots: Roots, out_mp4: Path,
                     text = f"{t}:{str(cats.get(t, '?')).split('/')[0]}"
                     if (fid, t) not in masks:
                         text += " (no mask)"
-                    _label(frame, text, b["xmin"], b["ymin"], colors[t], banner_h)
-            y = 16
-            for line in banner:
-                x = 8
-                for text, color in line:
-                    cv2.putText(frame, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
-                    x += cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)[0][0] + 12
-                y += 18
+                    _label(frame, text, b["xmin"], b["ymin"], colors[t], 0)
             if side_by_side:
                 _label(original, "original", 0, H - 2, WHITE, 0)
                 _label(frame, "SAM 3.1 masks", 0, H - 2, WHITE, 0)
                 frame = np.hstack([original, frame])
-            ff.stdin.write(np.ascontiguousarray(frame).tobytes())
+            # the banner is a strip under the frame, so it never covers the picture
+            strip = np.full((banner_h, out_w, 3), 24, np.uint8)
+            y = 16
+            for line in banner:
+                x = 8
+                for text, color in line:
+                    cv2.putText(strip, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+                    x += cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)[0][0] + 12
+                y += 18
+            ff.stdin.write(np.ascontiguousarray(np.vstack([frame, strip])).tobytes())
     finally:
         cap.release()
         ff.stdin.close()

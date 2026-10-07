@@ -237,8 +237,8 @@ vidstg-masks render --vid 6047872014 --campaign-root outputs/smoke --side-by-sid
 writes `outputs/smoke/overlays/6047872014.mp4`: the original frames on the left, on the right
 the masks tinted per object, each object's VidOR box (thick at a human keyframe, thin at a
 tracker box), a label `tid:category` at each box, `(no mask)` after it where the object has a
-box but no mask, and a banner with the relations. Without `--side-by-side` only the painted
-frame is written.
+box but no mask, and a banner strip under the frame with the relations. Without `--side-by-side`
+only the painted frame is written.
 
 ## 7. More clips
 

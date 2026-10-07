@@ -34,7 +34,8 @@ prompted (a clip-level refusal, or an object without a human keyframe): they say
 and carry no merge block. Before, `export` listed them as invalid and left them out of the tables.
 
 **Render.** A label `tid:category` at each box, `(no mask)` where the object has a box but no
-mask; `--side-by-side` (the untouched frame on the left, the painted one on the right);
+mask; the banner (video id, relations, legend) is a strip under the frame instead of a darkened
+band over it; `--side-by-side` (the untouched frame on the left, the painted one on the right);
 `--crf`; `--no-labels`.
 
 **Launchers.** `process_array.slurm` forwards the drain signal (`USR1` at `SIGNAL_LEAD_SECONDS` before

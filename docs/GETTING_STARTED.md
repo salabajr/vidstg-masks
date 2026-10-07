@@ -34,7 +34,7 @@ environment=/path/to/vidstg-masks/.venv
 install_gpu=0 (no torch, no sam3; tests, doctor --skip-gpu-libs, export and status work)
 ```
 
-`pytest -q` ends with `124 passed`. The tests use synthetic annotations and a tiny generated
+`pytest -q` ends with `126 passed`. The tests use synthetic annotations and a tiny generated
 video; they never read the dataset.
 
 The pip and Hugging Face caches go under `<repo>/.cache` (or `VIDSTG_MASKS_CACHE_ROOT`), not

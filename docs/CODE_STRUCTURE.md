@@ -99,7 +99,7 @@ decodes the video again and paints the records.
 
 ## The tests
 
-`pytest -q` runs 124 tests in a few seconds on a CPU. `tests/conftest.py` builds a synthetic
+`pytest -q` runs 126 tests in a few seconds on a CPU. `tests/conftest.py` builds a synthetic
 dataset in a temporary directory (four videos with the shapes of the real files: human and
 tracker boxes, a clip with 17 objects, a clip whose video is missing) and a 12-frame mp4; no
 real data or model is touched. `tests/test_worker.py` drives `process` with a fake clip runner
@@ -119,6 +119,7 @@ that writes records without a GPU.
 | `test_concor.py` | 4 | the record, the validator, the tables |
 | `test_cli.py` | 14 | every command through `main`, including `transcode --campaign-root` re-queueing and `render --side-by-side` |
 | `test_no_torch.py` | 2 | the CPU modules import without torch |
+| `test_slurm_script.py` | 2 | `slurm/process_array.slurm` around a stub worker: the drain signal is forwarded and the task requeues; the worker's exit code is the task's |
 
 ## What is pinned
 

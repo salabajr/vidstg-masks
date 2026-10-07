@@ -8,9 +8,10 @@
 # One array task = one GPU = one `vidstg-masks process` shard. Every task walks the whole
 # worklist from its own offset and claims videos with exclusive lease files, so any task count
 # balances itself. USR1 (SIGNAL_LEAD_SECONDS before the time limit; submit_slurm.sh sets it,
-# 30 min here as the fallback) makes the shard stop claiming clips, finish the active one if it
-# can, exit 99 and requeue itself. A clip still running when Slurm kills the task at the limit
-# is recorded as interrupted and retried after the requeue.
+# 30 min here as the fallback) is forwarded to the shard, which stops claiming clips, finishes
+# the active one if it can and exits 99; this script then requeues the task. A clip still
+# running when Slurm kills the task at the limit is recorded as interrupted and retried after
+# the requeue.
 set -euo pipefail
 : "${REPO_ROOT:?}" "${PYTHON_BIN:?}" "${CAMPAIGN_ROOT:?}" "${SAM31_REPO_ROOT:?}" "${SAM31_CHECKPOINT:?}" "${SHARD_COUNT:?}"
 : "${VIDSTG_ROOT:?}" "${VIDOR_ANN_ROOT:?}" "${VIDOR_VIDEO_ROOT:?}"
@@ -71,6 +72,17 @@ policy_flags+=(--direction "${DIRECTION:-forward}" --agree-iou "${AGREE_IOU:-0.3
                --speck-ratio "${SPECK_RATIO:-0.1}" --dispute-rule "${DISPUTE_RULE:-refuse}" --dispute-winner "${DISPUTE_WINNER:-weak}")
 [[ -n "${DISPUTE_SCORE:-}" ]] && policy_flags+=(--dispute-score "${DISPUTE_SCORE}")
 
+# The drain signal (`--signal=B:USR1@...`: USR1 to this batch shell, SIGNAL_LEAD_SECONDS before
+# the limit) and a TERM reach this shell, not the worker. Forward them, and keep waiting for the
+# worker afterwards: bash's `wait` returns as soon as a trap has run. Without the trap the shell
+# dies on USR1 (exit code 10), the worker is killed with the job step, and nothing is requeued.
+worker_pid=""
+forward() {
+  echo "[task ${task_id}] signal $1: forwarding to the worker"
+  [[ -n "${worker_pid}" ]] && kill -s "$1" "${worker_pid}" 2>/dev/null || true
+}
+trap 'forward USR1' USR1
+trap 'forward TERM' TERM
 set +e
 "${PYTHON_BIN}" -m vidstg_masks.cli process \
   --worklist "${WORKLIST_PATH:-${CAMPAIGN_ROOT}/worklist.json}" \
@@ -79,8 +91,14 @@ set +e
   --shard-index "${task_id}" --shard-count "${SHARD_COUNT}" \
   --anchor-policy "${ANCHOR_POLICY:-human_gap}" --max-anchors "${MAX_ANCHORS:-16}" \
   --hq-fallback "${HQ_FALLBACK:-least-flagged}" --max-gap "${MAX_GAP:-60}" --gap-fill "${GAP_FILL:-human}" \
-  ${policy_flags[@]+"${policy_flags[@]}"} ${roots_flag[@]+"${roots_flag[@]}"}
+  ${policy_flags[@]+"${policy_flags[@]}"} ${roots_flag[@]+"${roots_flag[@]}"} &
+worker_pid=$!
+wait "${worker_pid}"
 worker_rc=$?
+while kill -0 "${worker_pid}" 2>/dev/null; do
+  wait "${worker_pid}"
+  worker_rc=$?
+done
 set -e
 if [[ "${worker_rc}" -eq 99 ]]; then
   echo "[task ${task_id}] drained on signal; requeueing"

@@ -85,7 +85,7 @@ the data elsewhere, run `process` with `--roots-from-env`.
 git clone https://github.com/salabajr/vidstg-masks.git && cd vidstg-masks
 INSTALL_GPU=0 bash scripts/setup.sh           # 1. virtual environment and the package, no torch
 source .venv/bin/activate
-pytest -q                                     # 2. 124 tests pass in a few seconds
+pytest -q                                     # 2. 126 tests pass in a few seconds
 cp .env.example .env && $EDITOR .env          # 3. your data roots (leave SAM31_CHECKPOINT commented for now)
 set -a && source .env && set +a
 vidstg-masks doctor --skip-hash --skip-gpu-libs           # 4. checks the roots, ffmpeg, dataset counts
@@ -246,7 +246,7 @@ src/vidstg_masks/
 schema/mask_record.schema.json    the record contract as JSON Schema
 scripts/             setup.sh, download_model.sh, run_local.sh, submit_slurm.sh
 slurm/process_array.slurm         one array task = one GPU = one shard
-tests/               124 CPU-only tests on synthetic annotations and a tiny video (pytest -q)
+tests/               126 CPU-only tests on synthetic annotations and a tiny video (pytest -q)
 examples/            complete .env files for a smoke test, the val split and the whole corpus
 docs/                the documentation listed below
 ```

@@ -37,7 +37,11 @@ and carry no merge block. Before, `export` listed them as invalid and left them 
 mask; `--side-by-side` (the untouched frame on the left, the painted one on the right);
 `--crf`; `--no-labels`.
 
-**Launchers.** `DIRECTION`, `AGREE_IOU`, `SPECK_FLOOR`, `SPECK_RATIO`, `DISPUTE_RULE`,
+**Launchers.** `process_array.slurm` forwards the drain signal (`USR1` at `SIGNAL_LEAD_SECONDS` before
+the limit) and `TERM` to the worker. Before, the batch shell had no trap, so the signal killed the
+shell (exit code 10), the worker died with the job step and the task was never requeued; the clip
+was retried by another task, or by the next submission. Test: `tests/test_slurm_script.py` runs the
+script around a stub worker. `DIRECTION`, `AGREE_IOU`, `SPECK_FLOOR`, `SPECK_RATIO`, `DISPUTE_RULE`,
 `DISPUTE_SCORE`, `DISPUTE_WINNER` in `run_local.sh`, `submit_slurm.sh` and `process_array.slurm`;
 `SLURM_ACCOUNT` is passed only when set; `submissions.txt` records the direction and the
 dispute settings.
@@ -47,7 +51,7 @@ the tracker state offloaded), capping the tasks per node with `CPUS_PER_TASK` wh
 not enforced, `STAGE_CHECKPOINT` on a RAM-backed `/tmp`. New `docs/GETTING_STARTED.md`,
 `docs/CLI.md`, `docs/CODE_STRUCTURE.md`, this changelog; the README rewritten around them.
 
-Tests: 124.
+Tests: 126.
 
 ## 0.1.0 (branch `main`)
 

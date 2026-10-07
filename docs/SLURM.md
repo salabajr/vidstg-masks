@@ -63,8 +63,10 @@ at any time (`vidstg-masks export --worklist ... --campaign-root ...`).
 
 ## At the walltime
 
-`submit_slurm.sh` passes `--signal=B:USR1@${SIGNAL_LEAD_SECONDS}` (default 1800 s). On `USR1`
-the shard stops claiming clips, finishes the active clip if it can, exits 99, and
+`submit_slurm.sh` passes `--signal=B:USR1@${SIGNAL_LEAD_SECONDS}` (default 1800 s): Slurm sends
+`USR1` to the batch shell, which forwards it to the shard (`trap` in `process_array.slurm`; without
+it the shell itself would die on the signal, exit code 10, and nothing would be requeued). The
+shard stops claiming clips, finishes the active clip if it can, exits 99, and
 `process_array.slurm` runs `scontrol requeue` on itself; the requeued task appends to the
 same log file and continues from the campaign state on disk. A clip still running when Slurm
 kills the task at the limit, or under preemption or `scancel`, is recorded in

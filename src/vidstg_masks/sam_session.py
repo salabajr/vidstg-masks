@@ -176,4 +176,8 @@ def cuda_reset_peak() -> None:
 
 
 def is_cuda_oom(exc: BaseException) -> bool:
-    return type(exc).__name__ == "OutOfMemoryError" or "CUDA out of memory" in str(exc)
+    """torch's OutOfMemoryError ("CUDA out of memory"), and the runtime's cudaErrorMemoryAllocation
+    that newer torch raises as AcceleratorError("CUDA error: out of memory")."""
+    msg = str(exc)
+    return (type(exc).__name__ == "OutOfMemoryError" or "CUDA out of memory" in msg
+            or "CUDA error: out of memory" in msg or "cudaErrorMemoryAllocation" in msg)

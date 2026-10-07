@@ -33,6 +33,10 @@ at the new file, so the next `process` runs the clip. New `video.probe_size`.
 prompted (a clip-level refusal, or an object without a human keyframe): they say `bidirectional`
 and carry no merge block. Before, `export` listed them as invalid and left them out of the tables.
 
+**Out-of-memory detection.** `is_cuda_oom` also recognises the runtime's `cudaErrorMemoryAllocation`,
+which newer torch raises as `AcceleratorError: CUDA error: out of memory`; before, such a clip was
+terminal after one attempt instead of being retried with the tracker state offloaded.
+
 **Render.** A label `tid:category` at each box, `(no mask)` where the object has a box but no
 mask; the banner (video id, relations, legend) is a strip under the frame instead of a darkened
 band over it; `--side-by-side` (the untouched frame on the left, the painted one on the right);

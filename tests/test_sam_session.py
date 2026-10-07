@@ -51,6 +51,8 @@ def test_session_closes_when_propagation_raises(fake_predictor_cls, no_scores):
         ss.run_session(pred, "v.mp4", {1: [(0, BOX)]}, 0, 5)
     assert pred.requests[-1]["type"] == "close_session"
     assert ss.is_cuda_oom(RuntimeError("CUDA out of memory"))
+    assert ss.is_cuda_oom(RuntimeError("CUDA error: out of memory\nSearch for `cudaErrorMemoryAllocation' in ..."))
+    assert not ss.is_cuda_oom(RuntimeError("CUDA error: an illegal memory access was encountered"))
 
 
 def test_outputs_and_scores_are_merged(fake_predictor_cls, monkeypatch):

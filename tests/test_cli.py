@@ -3,7 +3,7 @@ import shutil
 
 import pytest
 
-from conftest import VID_A, VID_B
+from conftest import H, N_FRAMES, VID_A, VID_B, W
 from test_worker import fake_runner
 from vidstg_masks import cli
 from vidstg_masks.worker import build_worklist, process, save_worklist
@@ -181,3 +181,43 @@ def test_direction_flags_reach_the_worker(data, tmp_path, monkeypatch):
     assert seen["direction"] == "backward" and seen["speck_floor"] == 20
     with pytest.raises(SystemExit):
         cli.main(["process", *common, "--direction", "sideways"])
+
+
+def test_transcode_requeues_the_clips_it_repairs(data, tmp_path, monkeypatch):
+    """A clip refused as decode_black (or frame_size_mismatch) has records, so the worker counts it as
+    done; `transcode --worklist --campaign-root` moves those files to superseded/ once the re-encode
+    matches the annotation, and the clip is pending again. A unit refused for another reason is left alone."""
+    from vidstg_masks import video
+    from vidstg_masks.worker import load_worklist, unit_status
+    c = tmp_path / "camp"
+    assert run(["build-worklist", "--split", "val", "--campaign-root", str(c)]) == 0
+    wl = load_worklist(c / "worklist.json")
+    vids = [u["vid"] for u in wl["units"]]
+    (c / "runs").mkdir(); (c / "records").mkdir(); (c / "errors").mkdir()
+    (c / "runs" / f"{vids[0]}.json").write_text(json.dumps({"vid": vids[0], "status": "refused", "reason": "decode_black"}))
+    (c / "records" / f"{vids[0]}.jsonl").write_text("{}\n")
+    (c / "errors" / f"{vids[0]}.json").write_text("{}")
+    (c / "runs" / f"{vids[1]}.json").write_text(json.dumps({"vid": vids[1], "status": "refused", "reason": "too_many_objects"}))
+    (c / "records" / f"{vids[1]}.jsonl").write_text("{}\n")
+    assert unit_status(wl["units"][0], c)["status"] == "done"
+    calls = []
+    monkeypatch.setattr(video, "transcode_h264", lambda src, dst: calls.append((src, dst)) or shutil.copy(src, dst.parent.mkdir(parents=True, exist_ok=True) or dst))
+    monkeypatch.setattr(video, "probe_frame_count", lambda p: N_FRAMES)
+    monkeypatch.setattr(video, "probe_size", lambda p: (W, H))
+    monkeypatch.setattr(video, "is_black", lambda p: False)
+    out = tmp_path / "transcoded"
+    assert run(["transcode", "--worklist", str(c / "worklist.json"), "--campaign-root", str(c),
+                "--vidor-transcoded-root", str(out)]) == 0
+    assert [v for s_, d_ in calls for v in [s_.stem]] == [vids[0]]          # only the decode_black unit
+    assert not (c / "runs" / f"{vids[0]}.json").exists() and not (c / "records" / f"{vids[0]}.jsonl").exists()
+    assert (c / "superseded" / "runs" / f"{vids[0]}.json").is_file() and (c / "superseded" / "records" / f"{vids[0]}.jsonl").is_file()
+    assert (c / "superseded" / "errors" / f"{vids[0]}.json").is_file()
+    assert unit_status(wl["units"][0], c)["status"] == "pending"
+    assert (c / "runs" / f"{vids[1]}.json").is_file() and unit_status(wl["units"][1], c)["status"] == "done"
+    # a re-encode that does not match the annotation leaves the refusal in place and fails the command
+    monkeypatch.setattr(video, "probe_size", lambda p: (W + 1, H))
+    (c / "runs" / f"{vids[0]}.json").write_text(json.dumps({"vid": vids[0], "status": "refused", "reason": "frame_size_mismatch"}))
+    (c / "records" / f"{vids[0]}.jsonl").write_text("{}\n")
+    assert run(["transcode", "--worklist", str(c / "worklist.json"), "--campaign-root", str(c),
+                "--vidor-transcoded-root", str(out)]) == 1
+    assert (c / "runs" / f"{vids[0]}.json").is_file()

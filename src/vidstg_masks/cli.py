@@ -180,11 +180,15 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument("--out", type=Path, help="default <campaign>/overlays/<vid>.mp4")
     r.add_argument("--alpha", type=float, default=0.45)
 
-    t = sub.add_parser("transcode", help="H.264 re-encode into VIDOR_TRANSCODED_ROOT for videos that decode black")
+    t = sub.add_parser("transcode", help="H.264 re-encode into VIDOR_TRANSCODED_ROOT for videos that decode black; "
+                                         "with --campaign-root the repaired clips are queued again for `process`")
     _add_roots(t)
     _add_vids(t)
-    t.add_argument("--worklist", type=Path, help="transcode every unit whose runs/ entry is a decode_black refusal")
-    t.add_argument("--campaign-root", type=Path)
+    t.add_argument("--worklist", type=Path, help="with --campaign-root: transcode every unit the campaign refused as "
+                                                 "decode_black or frame_size_mismatch")
+    t.add_argument("--campaign-root", type=Path,
+                   help="a refused unit whose re-encode decodes with the annotation's frame count and size has its "
+                        "refusal records moved to <campaign>/superseded/ so the next `process` runs it")
     t.add_argument("--all-black", action="store_true",
                    help="with --worklist: probe every unit's video and transcode the black ones")
     return ap
@@ -473,7 +477,7 @@ def cmd_render(args) -> int:
 
 def cmd_transcode(args) -> int:
     from .datasets import build_vidor_index, load_vidor
-    from .video import is_black, probe_frame_count, transcode_h264
+    from .video import is_black, probe_frame_count, probe_size, transcode_h264
     from .worker import load_worklist, read_vids_file
 
     roots = Roots.from_args(args)
@@ -488,7 +492,7 @@ def cmd_transcode(args) -> int:
                     vids.append(u["vid"])
             elif args.campaign_root:
                 rp = args.campaign_root / "runs" / f"{u['vid']}.json"
-                if rp.is_file() and json.loads(rp.read_text()).get("reason") == "decode_black":
+                if rp.is_file() and json.loads(rp.read_text()).get("reason") in REQUEUE_REASONS:
                     vids.append(u["vid"])
     if not vids:
         print("nothing to transcode")
@@ -505,12 +509,38 @@ def cmd_transcode(args) -> int:
             continue
         transcode_h264(src, dst)
         n = probe_frame_count(dst)
-        ok = n == ann["frame_count"]
-        print(f"{vid}: {dst} frames {n} vs annotation {ann['frame_count']} "
-              f"{'OK' if ok else 'MISMATCH'} · black={is_black(dst)}")
+        size = probe_size(dst)
+        black = is_black(dst)
+        ok = n == ann["frame_count"] and size == (ann["width"], ann["height"]) and not black
+        print(f"{vid}: {dst} frames {n} vs annotation {ann['frame_count']} · size {size} vs "
+              f"{(ann['width'], ann['height'])} · black={black} · {'OK' if ok else 'NOT USABLE'}")
         if not ok:
             rc = 1
+        elif args.campaign_root:
+            moved = requeue_refused_unit(args.campaign_root, vid)
+            if moved:
+                print(f"{vid}: refusal records moved to {args.campaign_root / 'superseded'}; the clip is pending again")
     return rc
+
+
+REQUEUE_REASONS = ("decode_black", "frame_size_mismatch")
+
+
+def requeue_refused_unit(campaign_root: Path, vid: str) -> bool:
+    """A clip the campaign refused for a video defect that a transcode repairs (REQUEUE_REASONS):
+    move its runs/, records/ and errors/ files under <campaign>/superseded/<kind>/, keeping them for
+    the record, so `unit_status` sees the clip as pending. Returns False when the run was not such
+    a refusal (nothing is touched)."""
+    rp = campaign_root / "runs" / f"{vid}.json"
+    if not rp.is_file() or json.loads(rp.read_text()).get("reason") not in REQUEUE_REASONS:
+        return False
+    for kind, name in (("runs", f"{vid}.json"), ("records", f"{vid}.jsonl"), ("errors", f"{vid}.json")):
+        src = campaign_root / kind / name
+        if src.is_file():
+            dst = campaign_root / "superseded" / kind / name
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            src.replace(dst)
+    return True
 
 
 COMMANDS = {"doctor": cmd_doctor, "build-worklist": cmd_build_worklist, "process": cmd_process,

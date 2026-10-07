@@ -58,7 +58,13 @@ count assertion with `ASSERT_COUNTS=0`.
 - no video file: `video_missing`.
 - one sequential OpenCV decode: frame count must equal the annotation's `frame_count`
   (`frame_count_mismatch`), size must equal `width x height` (`frame_size_mismatch`), and
-  eight evenly spaced frames must not all be black (`decode_black`).
+  eight evenly spaced frames must not all be black (`decode_black`). `vidstg-masks transcode
+  --worklist --campaign-root` re-encodes the videos of `decode_black` and `frame_size_mismatch`
+  refusals without changing their size (4:4:4 chroma for an odd width or height), verifies the
+  result against the annotation and moves the clip's refusal records to `<campaign>/superseded/`,
+  so the next `process` runs the clip. (Until 2026-10-06 the transcode padded odd sizes by one
+  pixel and the precheck then refused the clip as `frame_size_mismatch`; the 500 x 375 videos of
+  the VP6F class all have an odd height.)
 
 The pre-checks run on the human plan; the hq gate (which reads the video) is applied only
 after they pass. A clip refused here has never been prompted, so its refusal records carry

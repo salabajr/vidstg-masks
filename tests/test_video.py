@@ -34,3 +34,17 @@ def test_transcode_keeps_frame_count(data, tmp_path):
     dst = transcode_h264(src, tmp_path / "out" / "a.mp4")
     assert dst.is_file() and not list((tmp_path / "out").glob("*.part"))
     assert decode_check(dst, N_FRAMES, (W, H))["frame_count_ok"]
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None, reason="ffmpeg not installed")
+def test_transcode_keeps_an_odd_frame_size(tmp_path):
+    """The VP6F class is 500 x 375: an odd height must survive the re-encode (no padding), rule 6."""
+    import subprocess
+    from vidstg_masks.video import probe_size
+    src = tmp_path / "odd.mp4"
+    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=51x37:rate=10",
+                    "-frames:v", "6", "-pix_fmt", "yuv444p", str(src)], check=True)
+    assert probe_size(src) == (51, 37)
+    dst = transcode_h264(src, tmp_path / "out" / "odd.mp4")
+    chk = decode_check(dst, 6, (51, 37))
+    assert probe_size(dst) == (51, 37) and chk["size_ok"] and chk["frame_count_ok"] and not chk["black"]

@@ -12,6 +12,8 @@ $CAMPAIGN_ROOT/
                          `merge`: how many object-frames each reading, decision and refusal reason got
   errors/<vid>.json      last failure (attempt, error_type, message, traceback, cuda_oom, interrupted)
   claims/<vid>.claim     transient lease while a worker holds the video
+  superseded/            runs/, records/, errors/ of clips refused for a video defect that a
+                         later `transcode` repaired; kept for the record, ignored by export
   overlays/<vid>.mp4     QA renders (vidstg-masks render); never part of a release
   export/
     masks.parquet        one row per mask
@@ -50,7 +52,7 @@ Reason codes:
 | no_hq_anchor | object | hq policy with `--hq-fallback refuse`: no keyframe passed the gate |
 | frame_count_mismatch | clip | decoded frame count differs from the annotation |
 | frame_size_mismatch | clip | decoded size differs from the annotation |
-| decode_black | clip | video decodes black under OpenCV; run `transcode` |
+| decode_black | clip | video decodes black under OpenCV; `transcode --worklist --campaign-root` repairs and re-queues the clip |
 | too_many_objects | clip | more than 16 relation objects |
 | video_missing | clip | no file at the annotation's `video_path` |
 | not_tracked | frame | the pass never predicted this frame: the span-end frame of a backward pass |

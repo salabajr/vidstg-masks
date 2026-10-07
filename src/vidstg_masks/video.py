@@ -82,15 +82,32 @@ def is_black(path: Path, n_sample: int = 8) -> bool:
     return bool(means) and max(means) < BLACK_MEAN_THRESHOLD
 
 
+def probe_size(path: Path) -> tuple[int, int] | None:
+    """(width, height) of the first video stream via ffprobe; None when it cannot be read."""
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+             "-of", "csv=p=0", str(path)], capture_output=True, text=True, check=True).stdout.strip()
+        w, h = out.splitlines()[0].split(",")[:2]
+        return int(w), int(h)
+    except (subprocess.CalledProcessError, ValueError, IndexError, FileNotFoundError):
+        return None
+
+
 def transcode_h264(src: Path, dst: Path, crf: int = 18) -> Path:
-    """Re-encode to H.264/yuv420p without frame drops or duplicates (`-vsync 0`), padding
-    odd dimensions by one pixel so yuv420p is legal. Writes to a .part file and renames."""
+    """Re-encode to H.264 without frame drops or duplicates (`-vsync 0`) and without changing
+    the frame size. 4:2:0 chroma needs even dimensions, so a video with an odd width or height
+    (the 500 x 375 VP6F class is the usual case) is written as 4:4:4, which has no such
+    constraint and which OpenCV decodes; even sizes stay 4:2:0. Padding instead would change
+    the size and the precheck would refuse the clip (frame_size_mismatch, rule 6). Writes to a
+    .part file and renames."""
     dst.parent.mkdir(parents=True, exist_ok=True)
     tmp = dst.with_suffix(dst.suffix + ".part")
+    size = probe_size(src)
+    pix_fmt = "yuv420p" if size is not None and size[0] % 2 == 0 and size[1] % 2 == 0 else "yuv444p"
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
-         "-vsync", "0", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
-         "-c:v", "libx264", "-preset", "medium", "-crf", str(crf), "-pix_fmt", "yuv420p",
+         "-vsync", "0", "-c:v", "libx264", "-preset", "medium", "-crf", str(crf), "-pix_fmt", pix_fmt,
          "-an", "-f", "mp4", str(tmp)], check=True)
     tmp.replace(dst)
     return dst

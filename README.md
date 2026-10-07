@@ -194,8 +194,12 @@ and the GPU-hours double; the merge itself runs on the CPU in seconds.
 - The outputs are model masks with provenance, not human-verified masks.
 - Clips with more than 16 relation objects are refused (9 of 6,770 videos).
 - About 2.8 percent of VidOR videos decode as black frames under OpenCV, which SAM's loader
-  uses. Those clips are refused with `decode_black`; `vidstg-masks transcode` re-encodes them
-  to H.264 into `VIDOR_TRANSCODED_ROOT`, after which `process` picks them up.
+  uses. Those clips are refused with `decode_black`; `vidstg-masks transcode --worklist ...
+  --campaign-root ...` re-encodes them to H.264 into `VIDOR_TRANSCODED_ROOT` without changing
+  the frame size (an odd width or height is written as 4:4:4 chroma), checks the result against
+  the annotation, moves the clip's refusal records to `<campaign>/superseded/` and the next
+  `process` runs the clip. Running `submit_slurm.sh` or `run_local.sh` again on the same campaign
+  is that `process`.
 - A decoded frame count or size that disagrees with the annotation refuses the clip.
   Frame indices are never rescaled.
 - An object without a human keyframe in its span is refused; a frame where SAM returns no

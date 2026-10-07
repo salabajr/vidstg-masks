@@ -267,9 +267,12 @@ Measured on one RTX A5000 (24 GB), eager mode:
 | peak VRAM | 6 to 19 GB per clip |
 
 These are the numbers of one pass. `--direction both` runs two passes, so the segmentation time
-and the GPU-hours double; the merge itself runs on the CPU in seconds. Host memory of a `both`
-run grows with frames times objects (about 14 MB per frame-object with the tracker state
-offloaded to the CPU); [docs/SLURM.md](docs/SLURM.md#sizing) says how to size the nodes.
+and the GPU-hours double; the merge itself runs on the CPU in seconds. Measured on 99 VidSTG-val
+videos with `--direction both` (243,750 object-frames, peak VRAM 17.8 GB): 22.8 GPU-hours inside
+the SAM sessions, 42 task-hours allocated to the array including idle waiting and retries. Host
+memory of a `both` run grows with frames times objects (about 14 MB per frame-object with the
+tracker state offloaded to the CPU); [docs/SLURM.md](docs/SLURM.md#sizing) says how to size the
+nodes.
 
 ## Limits
 
@@ -288,9 +291,11 @@ offloaded to the CPU); [docs/SLURM.md](docs/SLURM.md#sizing) says how to size th
   pixels is a refusal with `empty_mask`.
 - `mask_confidence` is SAM's per-frame object score, between 0 and 1. It orders frames
   sensibly but is not calibrated.
-- A clip whose frames times objects is very large (above about 20,000 in a `both` run) may
-  exceed the host memory of one node; it is retried up to five times and then shows as
-  failed, with the kill in `errors/<vid>.json`.
+- A clip whose frames times objects is very large may not fit a `both` run: one clip of 2,640
+  frames × 8 objects (about 21,000 frame-objects) was killed four times by a 515 GB node's
+  memory limit and then ran out of the 24 GB of VRAM; clips up to about 15,000 frame-objects
+  ran. Such a clip is retried up to five times and then shows as failed, with the error in
+  `errors/<vid>.json`; a forward-only run of it fits.
 
 ## Documentation
 

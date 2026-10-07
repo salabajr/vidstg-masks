@@ -46,7 +46,9 @@ and `process` decode each video and require the frame count to equal `frame_coun
 
 About 2.8% of VidOR videos are VP6F-encoded (some 500x375) and decode as black frames under
 OpenCV. `process` refuses them with `decode_black`. `vidstg-masks transcode` re-encodes them
-losslessly in frame count (`ffmpeg -vsync 0`, H.264, odd sizes padded by one pixel) into
+without dropping or duplicating frames (`ffmpeg -vsync 0`, H.264) and without changing the
+frame size (an odd width or height is written with 4:4:4 chroma) into
 `$VIDOR_TRANSCODED_ROOT/<folder>/<vid>.mp4`, which `resolve_video` prefers over the raw file.
-Re-run `process` afterwards; the refused records are replaced (delete `records/<vid>.jsonl`
-and `runs/<vid>.json` for the transcoded videos first, or start a new campaign).
+With `--worklist --campaign-root` it picks the refused clips itself, moves their refusal
+records to `<campaign>/superseded/` and points their worklist units at the new files, so the
+next `process` runs them ([docs/CLI.md](CLI.md#transcode)).

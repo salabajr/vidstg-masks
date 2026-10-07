@@ -1,5 +1,25 @@
 # Pipeline
 
+How a video becomes mask records, step by step. The README has the seven steps in short; this
+page has every rule, every measurement and the fields that record each choice.
+
+```
+build-worklist (CPU)        process, one shard per GPU                                        export (CPU)
+  VidSTG + VidOR  ──►  worklist.json  ──►  claim a clip  ──►  process-one (subprocess)  ──►  records/<vid>.jsonl  ──►  masks.parquet
+  counts asserted                                               plan (anchors, negatives)        runs/<vid>.json         refusals.parquet
+                                                                pre-checks (decode)                                      ledger.csv, manifest.json
+                                                                SAM session, forward                                     concor/ tables
+                                                                SAM session, backward (both)
+                                                                merge (both)
+                                                                records + provenance
+```
+
+Sections: [Unit of work](#unit-of-work) · [Worklist](#worklist-cpu-workerbuild_worklist) ·
+[Planning](#planning-cpu-anchorsplan_clip) · [Pre-checks](#pre-checks-cpu-workerprecheck_clip) ·
+[SAM session](#sam-session-sam_sessionrun_session) · [Backward pass and the merge](#backward-pass-and-the-merge---direction) ·
+[Records](#records-workerclip_records) · [Worker](#worker-workerprocess) · [Export](#export-exportexport_campaign) ·
+[QA video](#qa-video-renderrender_overlay) · [Anchor policies](#anchor-policies) · [Glossary](#glossary)
+
 ## Unit of work
 
 One VidOR video. Its VidSTG records (6.6 on average) are joined on `vid`; the object set
@@ -196,6 +216,16 @@ writing anything.
 the VidOR annotation and requires exactly one record for each, decodes every RLE, and
 validates every record against the schema. Problems are listed in the manifest and make
 `export` exit 1.
+
+## QA video (`render.render_overlay`)
+
+`vidstg-masks render` decodes the clip once more and writes an H.264 video from the records:
+every written mask tinted in its object's colour, each object's VidOR box (thick at a human
+keyframe, thin at a tracker box), a label `tid:category` at the box with `(no mask)` where the
+object has a box but no record with a mask, and a banner with the relations and the legend.
+`--side-by-side` puts the untouched frame on the left and the painted one on the right. The
+video is for eyes only; it is written under `<campaign>/overlays/` and is never part of an
+export.
 
 ## Anchor policies
 

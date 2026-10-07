@@ -14,7 +14,7 @@ $CAMPAIGN_ROOT/
   claims/<vid>.claim     transient lease while a worker holds the video
   superseded/            runs/, records/, errors/ of clips refused for a video defect that a
                          later `transcode` repaired; kept for the record, ignored by export
-  overlays/<vid>.mp4     QA renders (vidstg-masks render); never part of a release
+  overlays/<vid>.mp4     QA videos (vidstg-masks render: masks, boxes, labels, optionally next to the original); never part of a release
   export/
     masks.parquet        one row per mask
     refusals.parquet     one row per refusal

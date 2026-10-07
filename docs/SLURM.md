@@ -135,8 +135,19 @@ scratch or project storage. The worker also sets
 Measured on one RTX A5000 24 GB (README, Cost): about 1.5 min of model load per clip plus
 about 0.4 s per frame per object; 451 val clips about 92 GPU-h; all 602 val videos about
 120 GPU-h; all 6,770 videos about 1,250-3,100 GPU-h depending on object counts; peak VRAM
-6-19 GB per clip. Host memory per task stayed under 20 GB in our runs; the video is decoded
-to CPU memory (`offload_video_to_cpu`), so long 1080p clips need more.
+6-19 GB per clip. Host memory per task stayed under 20 GB in our forward-only runs; the video
+is decoded to CPU memory (`offload_video_to_cpu`), so long 1080p clips need more, and a
+`--direction both` run of a clip over about 1,500 frames (tracker state offloaded to the CPU,
+two passes) takes tens of GB. Where the site does not enforce `--mem` (Slurm's `AllocMem` stays
+0), the scheduler may put every array task on one node: eight of our tasks on one 515 GB node
+drove its free memory to 1.6 GB and the kernel killed the two longest clips (2,158 and 2,697
+frames; they were retried after the tasks were spread). Cap the tasks per node with
+`CPUS_PER_TASK`, which Slurm does enforce: `CPUS_PER_TASK` = cores per node / tasks you want
+there (64 cores and 16 CPUs per task give at most four tasks per node). An interrupted clip is
+retried by the next task that claims it (up to five times), so such a kill costs time, not masks.
+`STAGE_CHECKPOINT=1` copies the 3.5 GB checkpoint to `$SLURM_TMPDIR` (or `/tmp`) on each node; on a
+node where that is a RAM-backed tmpfs the copy costs 3.5 GB of the same memory, so set
+`STAGE_CHECKPOINT=0` there (`df -h /tmp` on the node says `tmpfs` when it is).
 
 `counts.prop_frame_objects` in `worklist.json` is the campaign's total frame-object count:
 multiply by 0.4 s and add 1.5 min per unit for the GPU-hour budget. One array pass of

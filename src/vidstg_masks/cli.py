@@ -178,7 +178,12 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument("--vid", required=True)
     r.add_argument("--campaign-root", type=Path, required=True)
     r.add_argument("--out", type=Path, help="default <campaign>/overlays/<vid>.mp4")
-    r.add_argument("--alpha", type=float, default=0.45)
+    r.add_argument("--alpha", type=float, default=0.45, help="mask tint strength, 0 to 1")
+    r.add_argument("--no-labels", action="store_true",
+                   help="do not write `<tid>:<category>` at each box (and \"(no mask)\" where the object has a box but no mask)")
+    r.add_argument("--side-by-side", action="store_true",
+                   help="the untouched frame on the left and the painted one on the right (twice the width)")
+    r.add_argument("--crf", type=int, default=20, help="libx264 quality, lower is larger (default 20)")
 
     t = sub.add_parser("transcode", help="H.264 re-encode into VIDOR_TRANSCODED_ROOT for videos that decode black; "
                                          "with --campaign-root the repaired clips are queued again for `process`")
@@ -470,7 +475,8 @@ def cmd_render(args) -> int:
         unit = next((u for u in load_worklist(wl_path)["units"] if u["vid"] == args.vid), None)
         relations = unit["relations"] if unit else None
     out = args.out or (args.campaign_root / "overlays" / f"{args.vid}.mp4")
-    n = render_overlay(args.vid, records, roots, out, relations, args.alpha)
+    n = render_overlay(args.vid, records, roots, out, relations, args.alpha, crf=args.crf,
+                       labels=not args.no_labels, side_by_side=args.side_by_side)
     print(f"{n} frames -> {out}")
     return 0
 

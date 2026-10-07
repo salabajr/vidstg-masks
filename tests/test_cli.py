@@ -65,8 +65,22 @@ def test_render_cli_writes_h264(roots, tmp_path):
     out = tmp_path / "ov.mp4"
     assert run(["render", "--vid", VID_A, "--campaign-root", str(c), "--out", str(out)]) == 0
     assert out.stat().st_size > 0
-    from vidstg_masks.video import decode_check
+    from vidstg_masks.video import decode_check, probe_size
     assert decode_check(out, 12)["frame_count_ok"]
+    assert probe_size(out) == (W, H)
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
+def test_render_side_by_side_doubles_the_width(roots, tmp_path):
+    c = tmp_path / "camp"
+    save_worklist(c / "worklist.json", build_worklist(roots, "train"))
+    process(c / "worklist.json", 0, 1, c, c / "x.pt", roots=roots, clip_runner=fake_runner(roots, c, []))
+    out = tmp_path / "sbs.mp4"
+    assert run(["render", "--vid", VID_A, "--campaign-root", str(c), "--out", str(out),
+                "--side-by-side", "--crf", "28", "--no-labels"]) == 0
+    from vidstg_masks.video import decode_check, probe_size
+    assert decode_check(out, N_FRAMES)["frame_count_ok"]
+    assert probe_size(out) == (2 * W, H)
 
 
 def test_status_cli(roots, tmp_path, capsys):

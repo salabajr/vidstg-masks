@@ -109,7 +109,7 @@ def covered_fraction(a: dict, b: dict) -> float:
 
 
 def edge_touches(b: dict, W: int, H: int, tol: int = 2) -> int:
-    """How many frame borders the box sits on (box_anchor_covariates:56)."""
+    """How many frame borders the box sits on (research code)."""
     return (int(b["xmin"] <= tol) + int(b["ymin"] <= tol)
             + int(b["xmax"] >= W - 1 - tol) + int(b["ymax"] >= H - 1 - tol))
 
@@ -124,7 +124,7 @@ def _diag(b: dict) -> float:
 
 def motion_at(boxes: dict, fids: list[int], f: int) -> float | None:
     """Centre displacement per frame to the neighbouring annotated frames, in
-    box diagonals (box_anchor_covariates:88). None without a neighbour."""
+    box diagonals (research code). None without a neighbour."""
     i = fids.index(f)
     speeds = []
     for j in (i - 1, i + 1):

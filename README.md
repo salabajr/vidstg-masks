@@ -9,7 +9,7 @@ pipeline writes a refusal with a reason instead of guessing.
 ```
 VidSTG annotations  (relations: subject, predicate, object, frame interval)  ─┐
 VidOR annotations   (boxes per frame; human keyframes marked)                 ├─►  vidstg-masks  ─►  masks.parquet, refusals.parquet
-VidOR videos                                                                  ─┘                     one record per object and frame,
+VidOR videos                                                                 ─┘                     one record per object and frame,
                                                                                                     plus the ConCor Video tables
 ```
 

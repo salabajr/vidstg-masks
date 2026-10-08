@@ -429,8 +429,8 @@ def test_subprocess_runner_forwards_the_policy_settings(roots, campaign, monkeyp
                         ("--checkpoint-hash", "a" * 64)]:
         assert cmd[cmd.index(flag) + 1] == value, flag
     assert "--keep-span-edges" in cmd and "--contained-negatives" in cmd and "--force-offload" not in cmd
-    assert cmd[cmd.index("--dispute-rule") + 1] == "refuse" and cmd[cmd.index("--dispute-winner") + 1] == "weak"
-    assert "--dispute-score" not in cmd and cmd[cmd.index("--direction") + 1] == "forward"
+    assert cmd[cmd.index("--dispute-rule") + 1] == "higher_score" and cmd[cmd.index("--dispute-winner") + 1] == "strong"
+    assert cmd[cmd.index("--dispute-score") + 1] == "0.907" and cmd[cmd.index("--direction") + 1] == "both"
     # defaults: span edges absent, negatives off sent explicitly (the child's own default is on),
     # the gap rule is the default one
     worker.subprocess_runner(campaign / "worklist.json", campaign, campaign / "ckpt.pt", "human", 16)(unit, 2, True)
@@ -571,8 +571,8 @@ def test_run_clip_both_directions_merges_and_records_the_rule(roots, campaign, m
     run = run_clip(unit, roots, campaign, campaign / "ckpt.pt", "human", 16, verbose=False,
                    contained_negatives=False, direction="both")
     assert run["status"] == "done" and run["direction"] == "both" and run["frames"] == 2 * n - 2
-    assert (run["agree_iou"], run["speck_floor"], run["speck_ratio"], run["dispute_score"]) == (0.3, 20, 0.1, None)
-    assert (run["dispute_rule"], run["dispute_winner"]) == ("refuse", "weak")
+    assert (run["agree_iou"], run["speck_floor"], run["speck_ratio"], run["dispute_score"]) == (0.3, 20, 0.1, 0.907)
+    assert (run["dispute_rule"], run["dispute_winner"]) == ("higher_score", "strong")
     recs = list(read_jsonl(campaign / "records" / f"{VID_B}.jsonl"))
     by = {(r["tid"], r["fid"]): r for r in recs}
     mg = {k: r["prompt_payload"]["merge"] for k, r in by.items() if r["prompt_payload"].get("merge")}

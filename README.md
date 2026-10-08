@@ -43,13 +43,13 @@ VidOR videos                                                                 ─
    encloses a smaller one, the large object gets a negative click at the smaller one's centre.
 
 4. **Run SAM.** One SAM 3.1 Object Multiplex session per clip with all objects together, so
-   masks cannot overlap within a pass. One forward pass from the span start; with
-   `--direction both`, a second pass backward from the span end.
+   masks cannot overlap within a pass. One pass forward from the span start and one backward
+   from the span end (`--direction forward` skips the backward pass, at half the GPU time).
 
-5. **Merge passes** (`both` only). The two passes are merged frame by frame without consulting
+5. **Merge passes.** The two passes are merged frame by frame without consulting
    the original boxes. Specks are dropped, a mask that appears in only one pass is kept, and
    the forward mask is used when both agree. Disagreements are refused, or resolved using
-   `mask_confidence` when a dispute rule is set. Overlapping pixels go to the object with the
+   `mask_confidence` when the higher-scoring pass clears a threshold. Overlapping pixels go to the object with the
    stronger claim, so final masks never overlap.
 
 6. **Write records.** One record per object and boxed frame: either a COCO RLE mask with its
@@ -170,8 +170,8 @@ bash scripts/submit_slurm.sh                                           # N GPUs,
 ```
 
 `SPLIT` is `train`, `val`, `test` or `all`; `VIDS`, `VIDS_FILE` and `LIMIT` narrow it down.
-`DIRECTION=both DISPUTE_RULE=higher_score DISPUTE_SCORE=0.907 DISPUTE_WINNER=strong` adds the
-backward pass and the measured dispute tie-break ([Settings](#settings-that-change-the-masks)).
+`DIRECTION=forward DISPUTE_RULE=refuse` drops the backward pass and the merge, at half the GPU
+time ([Settings](#settings-that-change-the-masks)).
 `SLURM_ACCOUNT` is passed only when set.
 
 Each clip runs in a fresh GPU subprocess and writes its own `records/<vid>.jsonl` atomically.
@@ -217,19 +217,21 @@ prompt selection and how forward/backward passes are merged. All are recorded in
 | `--max-gap` (`MAX_GAP`) | 60 | the gap rule: no stretch of an object's span longer than this without an anchor; 0 disables it |
 | `--gap-fill` (`GAP_FILL`) | `human` | what may fill a gap: a human keyframe only, or `any` (a tracker box where no keyframe lies in the gap) |
 | `--contained-negatives` (`CONTAINED_NEGATIVES`) | on | negative clicks for an object whose box contains a small object's box |
-| `--direction` (`DIRECTION`) | `forward` | `forward`: one pass from the span start. `both`: a second pass from the span end, merged frame by frame; twice the GPU time. `backward`: the second pass alone |
+| `--direction` (`DIRECTION`) | `both` | `both`: a pass from the span start and one from the span end, merged frame by frame. `forward`: the first pass alone, half the GPU time. `backward`: the second pass alone |
 | `--agree-iou`, `--speck-floor`, `--speck-ratio` | 0.3, 20, 0.1 | merge thresholds: when two masks agree and what counts as a speck |
-| `--dispute-rule` (`DISPUTE_RULE`) | `refuse` | a disputed frame (two real masks that do not overlap): `refuse` writes no mask; `higher_score` writes the pass with the higher `mask_confidence`; `forward_score` writes the forward mask. Both score rules need the score to reach `--dispute-score` |
-| `--dispute-score` (`DISPUTE_SCORE`) | unset | threshold required by a score-based dispute rule |
-| `--dispute-winner` (`DISPUTE_WINNER`) | `weak` | how a tie-break mask meets its neighbours: `weak` yields shared pixels to a stronger neighbour; `strong` takes them |
+| `--dispute-rule` (`DISPUTE_RULE`) | `higher_score` | a disputed frame (two real masks that do not overlap): `refuse` writes no mask; `higher_score` writes the pass with the higher `mask_confidence`; `forward_score` writes the forward mask. Both score rules need the score to reach `--dispute-score` |
+| `--dispute-score` (`DISPUTE_SCORE`) | 0.907 | threshold of a score-based dispute rule (not allowed with `refuse`) |
+| `--dispute-winner` (`DISPUTE_WINNER`) | `strong` | how a tie-break mask meets its neighbours: `weak` yields shared pixels to a stronger neighbour; `strong` takes them |
 
 On 20 VidSTG-val clips (69,729 object-frames), the default prompts cut frames without a mask
 from 343 to 137 compared with plain box prompts. The backward pass and merge, including the
-measured dispute tie-break (`higher_score` at 0.907 with the strong winner: 14 of 16 firm
+default dispute tie-break (`higher_score` at 0.907 with the strong winner: 14 of 16 firm
 labels), are described in [docs/PIPELINE.md](docs/PIPELINE.md#backward-pass-and-the-merge---direction).
+These defaults are the setting of the 99-video VidSTG-val run of 2026-10-07. The forward pass
+alone is
 
 ```bash
---direction both --dispute-rule higher_score --dispute-score 0.907 --dispute-winner strong
+--direction forward --dispute-rule refuse
 ```
 
 Look at `render --side-by-side` before trusting a new set of clips: the threshold rests on
@@ -284,10 +286,10 @@ See [docs/CODE_STRUCTURE.md](docs/CODE_STRUCTURE.md) for the full module map.
 
 ## Cost
 
-The val split (602 videos) is about **120 GPU-hours** on one RTX A5000; the full corpus is about
-**1,250–3,100 GPU-hours**.
+With the defaults (two passes) the val split (602 videos) is about **240 GPU-hours** on one
+RTX A5000 and the full corpus about **2,500–6,200 GPU-hours**; `--direction forward` halves both.
 
-Measured in eager mode, one pass:
+Measured in eager mode, per pass:
 
 | item | value |
 |---|---|
@@ -295,8 +297,8 @@ Measured in eager mode, one pass:
 | model load | about 1.5 min per clip |
 | peak VRAM | 6 to 19 GB per clip |
 
-`--direction both` runs two passes, so segmentation time and GPU-hours double; the merge itself
-runs on the CPU in seconds. Measured on 99 VidSTG-val videos with `--direction both`
+The default `--direction both` runs two passes; `--direction forward` halves the segmentation
+time and the GPU-hours. The merge itself runs on the CPU in seconds. Measured on 99 VidSTG-val videos with `--direction both`
 (243,750 object-frames, peak VRAM 17.8 GB): 22.8 GPU-hours inside the SAM sessions and
 42 task-hours allocated to the array including idle waiting and retries.
 

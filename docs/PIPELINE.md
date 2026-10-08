@@ -128,7 +128,7 @@ span end in its own session (a second propagation inside one session only re-run
 with new prompts, so it has to be a new session); SAM 3.1 then predicts the frames from the
 span end minus one down to the span start, and the span-end frame is recorded as `not_tracked`.
 
-`--direction both` (opt-in; the default is `forward`) runs the forward pass, keeps it as RLE, runs the backward
+`--direction both` (the default; `forward` skips the backward pass) runs the forward pass, keeps it as RLE, runs the backward
 pass and merges them frame by frame (`merge.merge_passes`, the pixels rule; no box is used):
 
 1. Each object's two candidates are read. A mask under `--speck-floor` pixels (20) is no mask.
@@ -146,19 +146,19 @@ pass and merges them frame by frame (`merge.merge_passes`, the pixels rule; no b
    backward mask when that touches nothing written, else it is refused (`handed_over_speck`).
    Inside one pass SAM gives a pixel to one object only, so after the handover no two written
    masks share a pixel.
-3. Optional, `--dispute-rule` (the default `refuse` leaves the dispute refused as in step 1).
+3. `--dispute-rule` (`refuse` leaves the dispute refused as in step 1).
    `forward_score` writes the forward mask when the forward pass's presence score
    (`mask_confidence`, SAM's per-frame object score through a sigmoid) is at least
    `--dispute-score T`; `higher_score` writes the pass with the higher presence score when that
    score is at least `T` (equal scores: forward). Below `T` the dispute is refused. No box is read.
-   `--dispute-winner weak` (the default) enters the mask in step 2 as a weak vote: a strong partner
+   `--dispute-winner weak` enters the mask in step 2 as a weak vote: a strong partner
    takes the pixels they share, a weak backward mask also yields to a partner's weak forward mask,
    and a tie-break mask left under the floor is refused (`handed_over_speck`), never replaced by the
-   other disputed mask. `--dispute-winner strong` enters it as a strong vote: it takes the pixels an
+   other disputed mask. `--dispute-winner strong` (the default) enters it as a strong vote: it takes the pixels an
    agreed partner shares with it (the partner is trimmed, and falls back or is refused as in step 2)
    and conflicts with another strong vote (`passes_conflict`). The record says `merge.tiebreak`
-   (`rule`, `threshold`, both scores, `pick`, `taken`, `winner`). The measured setting is
-   `higher_score`, `T` 0.907, `strong` (README, Settings that change the masks): on the 20 review
+   (`rule`, `threshold`, both scores, `pick`, `taken`, `winner`). The default, and the measured
+   setting, is `higher_score`, `T` 0.907, `strong` (README, Settings that change the masks): on the 20 review
    clips 65 disputes went forward, 134 backward, 14 stayed refused under `T`, 2 were conflicts, and
    129 neighbouring masks were trimmed.
 

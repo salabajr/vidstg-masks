@@ -57,10 +57,10 @@ STOP_REQUESTED = False
 
 def run_settings(anchor_policy: str, max_anchors: int, hq_fallback: str = "least-flagged",
                  max_gap: int = 60, gap_fill: str = "human", keep_span_edges: bool = False,
-                 contained_negatives: bool = False, direction: str = "forward",
+                 contained_negatives: bool = False, direction: str = "both",
                  agree_iou: float = 0.3, speck_floor: int = 20,
-                 speck_ratio: float = 0.1, dispute_score: float | None = None,
-                 dispute_rule: str = "refuse", dispute_winner: str = "weak") -> dict:
+                 speck_ratio: float = 0.1, dispute_score: float | None = 0.907,
+                 dispute_rule: str = "higher_score", dispute_winner: str = "strong") -> dict:
     return dict(anchor_policy=anchor_policy, max_anchors=max_anchors, hq_fallback=hq_fallback,
                 max_gap=max_gap, gap_fill=gap_fill, keep_span_edges=keep_span_edges,
                 contained_negatives=contained_negatives, direction=direction,
@@ -381,13 +381,13 @@ def run_clip(unit: dict, roots: Roots, campaign_root: Path, checkpoint: Path,
              hq_fallback: str = "least-flagged", verbose: bool = True,
              checkpoint_hash: str | None = None, max_gap: int = 60, gap_fill: str = "human",
              keep_span_edges: bool = False, contained_negatives: bool = False,
-             direction: str = "forward", agree_iou: float = 0.3, speck_floor: int = 20,
-             speck_ratio: float = 0.1, dispute_score: float | None = None,
-             dispute_rule: str = "refuse", dispute_winner: str = "weak") -> dict:
+             direction: str = "both", agree_iou: float = 0.3, speck_floor: int = 20,
+             speck_ratio: float = 0.1, dispute_score: float | None = 0.907,
+             dispute_rule: str = "higher_score", dispute_winner: str = "strong") -> dict:
     """One clip end to end inside the current process: plan, precheck, SAM, records.
     `direction`: forward or backward, one pass; both = a forward and a backward session
     with the same prompts, merged by merge.merge_passes (the pixels rule: `agree_iou`,
-    `speck_floor`, `speck_ratio`, and the opt-in dispute tie-break `dispute_rule` /
+    `speck_floor`, `speck_ratio`, and the dispute tie-break `dispute_rule` /
     `dispute_score` / `dispute_winner`; every record then carries what the merge did).
     `checkpoint_hash` is the sha256 the parent shard already verified (so the 3.5 GB file
     is hashed once per shard, not once per clip); without it the file is hashed here.
@@ -480,10 +480,10 @@ def process_one_main(worklist_path: Path, vid: str, campaign_root: Path, checkpo
                      force_offload: bool, hq_fallback: str = "least-flagged",
                      checkpoint_hash: str | None = None, roots: Roots | None = None,
                      max_gap: int = 60, gap_fill: str = "human", keep_span_edges: bool = False,
-                     contained_negatives: bool = False, direction: str = "forward",
+                     contained_negatives: bool = False, direction: str = "both",
                      agree_iou: float = 0.3, speck_floor: int = 20,
-                     speck_ratio: float = 0.1, dispute_score: float | None = None,
-                     dispute_rule: str = "refuse", dispute_winner: str = "weak") -> int:
+                     speck_ratio: float = 0.1, dispute_score: float | None = 0.907,
+                     dispute_rule: str = "higher_score", dispute_winner: str = "strong") -> int:
     """Entry point of the per-clip subprocess. Writes errors/<vid>.json on failure and
     exits EXIT_OOM for a CUDA OOM so the parent can retry with offload forced on.
     `roots`, when given (--roots-from-env), replaces the roots frozen in the worklist and
@@ -524,10 +524,10 @@ def subprocess_runner(worklist_path: Path, campaign_root: Path, checkpoint: Path
                       anchor_policy: str, max_anchors: int, python: str | None = None,
                       hq_fallback: str = "least-flagged", roots: Roots | None = None,
                       max_gap: int = 60, gap_fill: str = "human", keep_span_edges: bool = False,
-                      contained_negatives: bool = False, direction: str = "forward",
+                      contained_negatives: bool = False, direction: str = "both",
                       agree_iou: float = 0.3, speck_floor: int = 20,
-                      speck_ratio: float = 0.1, dispute_score: float | None = None,
-                      dispute_rule: str = "refuse", dispute_winner: str = "weak"):
+                      speck_ratio: float = 0.1, dispute_score: float | None = 0.907,
+                      dispute_rule: str = "higher_score", dispute_winner: str = "strong"):
     """Default clip runner: one fresh Python process per clip. The checkpoint is hashed
     once, before the first clip, and the hash handed to every child. `roots` (from
     --roots-from-env) is passed to the child as explicit root flags; the policy settings
@@ -675,9 +675,9 @@ def process(worklist_path: Path, shard_index: int, shard_count: int, campaign_ro
             max_wait_seconds: float | None = None, hq_fallback: str = "least-flagged",
             roots_from_env: bool = False, max_gap: int = 60, gap_fill: str = "human",
             keep_span_edges: bool = False, contained_negatives: bool = False,
-            direction: str = "forward", agree_iou: float = 0.3, speck_floor: int = 20,
-            speck_ratio: float = 0.1, dispute_score: float | None = None,
-            dispute_rule: str = "refuse", dispute_winner: str = "weak") -> int:
+            direction: str = "both", agree_iou: float = 0.3, speck_floor: int = 20,
+            speck_ratio: float = 0.1, dispute_score: float | None = 0.907,
+            dispute_rule: str = "higher_score", dispute_winner: str = "strong") -> int:
     """Shard worker: walk the worklist from this shard's offset, claim each pending clip
     and run it. Returns 0 when nothing is left for this shard, 99 when drained by a signal
     (Slurm requeue), 1 when a clip failed terminally. While other shards hold the remaining

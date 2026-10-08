@@ -23,13 +23,13 @@ KEEP_SPAN_EDGES="${KEEP_SPAN_EDGES:-0}"
 CONTAINED_NEGATIVES="${CONTAINED_NEGATIVES:-1}"   # 1 -> --contained-negatives, anything else -> --no-contained-negatives
 # Passes and merge (README, Settings that change the masks): DIRECTION both runs the backward pass too and merges;
 # the dispute tie-break is off (refuse) unless DISPUTE_RULE / DISPUTE_SCORE / DISPUTE_WINNER say otherwise.
-DIRECTION="${DIRECTION:-forward}"
+DIRECTION="${DIRECTION:-both}"
 AGREE_IOU="${AGREE_IOU:-0.3}"
 SPECK_FLOOR="${SPECK_FLOOR:-20}"
 SPECK_RATIO="${SPECK_RATIO:-0.1}"
-DISPUTE_RULE="${DISPUTE_RULE:-refuse}"
+DISPUTE_RULE="${DISPUTE_RULE:-higher_score}"
 DISPUTE_SCORE="${DISPUTE_SCORE:-}"
-DISPUTE_WINNER="${DISPUTE_WINNER:-weak}"
+DISPUTE_WINNER="${DISPUTE_WINNER:-strong}"
 TIME_LIMIT="${TIME_LIMIT:-12:00:00}"
 SIGNAL_LEAD_SECONDS="${SIGNAL_LEAD_SECONDS:-1800}"
 CPUS_PER_TASK="${CPUS_PER_TASK:-8}"
@@ -80,6 +80,6 @@ export_job="$(sbatch --parsable \
   --wrap="export PYTHONPATH='${PYTHONPATH}'; '${PYTHON_BIN}' -m vidstg_masks.cli export --worklist '${CAMPAIGN_ROOT}/worklist.json' --campaign-root '${CAMPAIGN_ROOT}' && '${PYTHON_BIN}' -m vidstg_masks.cli export-concor --worklist '${CAMPAIGN_ROOT}/worklist.json' --campaign-root '${CAMPAIGN_ROOT}'${CAPTIONS:+ --captions '${CAPTIONS}'}")"
 
 printf '%s worker_array=%s export=%s split=%s workers=%s direction=%s dispute=%s/%s/%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  "${worker_job}" "${export_job}" "${SPLIT}" "${NUM_WORKERS}" "${DIRECTION}" "${DISPUTE_RULE}" "${DISPUTE_SCORE:-none}" "${DISPUTE_WINNER}" >> "${CAMPAIGN_ROOT}/submissions.txt"
+  "${worker_job}" "${export_job}" "${SPLIT}" "${NUM_WORKERS}" "${DIRECTION}" "${DISPUTE_RULE}" "${DISPUTE_SCORE:-default}" "${DISPUTE_WINNER}" >> "${CAMPAIGN_ROOT}/submissions.txt"
 printf 'worker_array=%s\nexport=%s\ncampaign=%s\nprogress: %s -m vidstg_masks.cli status --worklist %s --campaign-root %s\n' \
   "${worker_job}" "${export_job}" "${CAMPAIGN_ROOT}" "${PYTHON_BIN}" "${CAMPAIGN_ROOT}/worklist.json" "${CAMPAIGN_ROOT}"

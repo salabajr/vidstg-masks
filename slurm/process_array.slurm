@@ -68,8 +68,8 @@ policy_flags=()
 # passed either way, so the variable decides: 1 (the default) -> on, anything else -> off
 if [[ "${CONTAINED_NEGATIVES:-1}" == "1" ]]; then policy_flags+=(--contained-negatives); else policy_flags+=(--no-contained-negatives); fi
 # passes and merge; DISPUTE_SCORE is the threshold of a score rule (unset under refuse)
-policy_flags+=(--direction "${DIRECTION:-forward}" --agree-iou "${AGREE_IOU:-0.3}" --speck-floor "${SPECK_FLOOR:-20}"
-               --speck-ratio "${SPECK_RATIO:-0.1}" --dispute-rule "${DISPUTE_RULE:-refuse}" --dispute-winner "${DISPUTE_WINNER:-weak}")
+policy_flags+=(--direction "${DIRECTION:-both}" --agree-iou "${AGREE_IOU:-0.3}" --speck-floor "${SPECK_FLOOR:-20}"
+               --speck-ratio "${SPECK_RATIO:-0.1}" --dispute-rule "${DISPUTE_RULE:-higher_score}" --dispute-winner "${DISPUTE_WINNER:-strong}")
 [[ -n "${DISPUTE_SCORE:-}" ]] && policy_flags+=(--dispute-score "${DISPUTE_SCORE}")
 
 # The drain signal (`--signal=B:USR1@...`: USR1 to this batch shell, SIGNAL_LEAD_SECONDS before

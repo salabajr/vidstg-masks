@@ -69,9 +69,10 @@ DEFAULT_SPECK_FLOOR = 20       # pixels
 DEFAULT_SPECK_RATIO = 0.1
 DISPUTE_RULES = ("refuse", "forward_score", "higher_score")
 DISPUTE_WINNERS = ("weak", "strong")
-DEFAULT_DISPUTE_RULE = "refuse"     # every dispute is refused
-DEFAULT_DISPUTE_SCORE = None        # threshold of the two score rules
-DEFAULT_DISPUTE_WINNER = "weak"
+DEFAULT_DIRECTION = "both"            # the measured pipeline (99 VidSTG-val videos, 2026-10-07)
+DEFAULT_DISPUTE_RULE = "higher_score"   # the pass with the higher mask_confidence, if it clears the threshold
+DEFAULT_DISPUTE_SCORE = 0.907           # the measured threshold (14 of 16 firm labels on the 20 review clips)
+DEFAULT_DISPUTE_WINNER = "strong"       # the tie-break mask takes the pixels an agreed neighbour shares
 
 
 def compress(per_frame: dict) -> dict:

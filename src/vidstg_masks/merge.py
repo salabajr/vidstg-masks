@@ -28,8 +28,7 @@ object's backward mask when that touches nothing written, else it is refused
 (handed_over_speck). Inside one pass SAM gives a pixel to one object only, so after the
 handover no two written masks share a pixel.
 
-Measured on 20 VidSTG-val clips (69,729 object-frames; the research repo's
-reports/merge_rules_v2.md): 217 refusals (215 disputes, 2 conflicts), 222 object-frames with
+Measured on 20 VidSTG-val clips (69,729 object-frames; research run of 2026-10-05): 217 refusals (215 disputes, 2 conflicts), 222 object-frames with
 nothing real in either pass, 176 masks from the backward pass, 180 masks trimmed, 0 shared
 pixels; the earlier per-object rule with a box tie-break left 282 overlapping pairs.
 
@@ -45,8 +44,7 @@ one (forward primary), and what is left under the floor is refused (handed_over_
 for the other disputed mask; `strong` (default), the winner takes the pixels an agreed neighbour shares with it
 (the neighbour is trimmed) and conflicts with another strong vote (passes_conflict).
 
-Measured on the 20 clips against Nathan's 16 firm frame labels (research branch, research/REPORT.md
-sections 11 to 14): higher_score at 0.907 with the strong winner agreed on 14, forward_score on 9,
+Measured on the 20 clips against the reviewer's 16 firm frame labels (research run of 2026-10-06): higher_score at 0.907 with the strong winner agreed on 14, forward_score on 9,
 refusing every dispute on 1. The strong winner is what keeps a backward win whole where an agreed
 forward neighbour had taken its pixels. 10 of the 16 decisions rest on a score margin under 0.005 and
 the threshold on one labeled hidden object (scores 0.81 / 0.86 against 0.956 and up where a mask was

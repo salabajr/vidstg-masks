@@ -1,9 +1,8 @@
 # Changelog
 
-Newest first. Versions are the `version` in `pyproject.toml`; between releases the entries are
-grouped by branch.
+Newest first. Versions are the `version` in `pyproject.toml`.
 
-## Unreleased
+## 0.2.0 (2026-10-07)
 
 **Defaults are the measured pipeline.** `--direction both`, `--dispute-rule higher_score`,
 `--dispute-score 0.907`, `--dispute-winner strong` are now the defaults of the CLI, the launch

@@ -1,7 +1,7 @@
 """SAM 3.1 Object Multiplex session: build the predictor, run one clip.
 
 torch and sam3 are imported inside functions only. The request sequence is the default
-path of run_pilot_masks.run_multiplex_session (research repo), kept identical so masks
+path of the research code this package was ported from, kept identical so masks
 regenerate byte-for-byte against existing runs:
 
   start_session(resource_path=<video>, offload_video_to_cpu=True)

@@ -336,3 +336,8 @@ tracker state offloaded to the CPU); [docs/SLURM.md](docs/SLURM.md#sizing) cover
 - [docs/SLURM.md](docs/SLURM.md): full-corpus runs, job graph, resuming and sizing.
 - [CHANGELOG.md](CHANGELOG.md): what changed, by version.
 - [CONTRIBUTING.md](CONTRIBUTING.md): tests, repository rules and regression checks.
+
+## License
+
+[MIT](LICENSE). The license covers this code only; VidOR, VidSTG and the SAM 3.1 checkpoint keep
+their own terms.

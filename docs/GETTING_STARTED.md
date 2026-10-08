@@ -69,7 +69,7 @@ vidstg-masks doctor --skip-hash --skip-gpu-libs
 ```
 
 ```
-vidstg-masks 0.1.0 · python 3.12.13 · /path/to/vidstg-masks/.venv/bin/python
+vidstg-masks 0.2.0 · python 3.12.13 · /path/to/vidstg-masks/.venv/bin/python
 [OK  ] vidstg_root: /data/vidstg
 [OK  ] vidor_ann_root: /data/vidor/annotation
 [OK  ] vidor_video_root: /data/vidor/video

@@ -1,6 +1,6 @@
 """Clip planning from annotations alone (CPU): object set, spans, anchor keyframes.
 
-Port of run_pilot_masks.plan_clip (research repo). Object set = union of subject_tid /
+Ported from the research code. Object set = union of subject_tid /
 object_tid over all used_relations of the video's VidSTG records. Clip span = interval
 hull of the used_segments; per-tid span = clip span intersected with the tid's VidOR box
 presence. Anchors are VidOR human keyframes (generated == 0) inside the tid span; the
@@ -25,7 +25,7 @@ Contained negatives (any policy; `add_contained_negatives`; on by default in the
 `--no-contained-negatives` turns them off): where another relation object's box lies inside an
 object's box and is small relative to it, the container gets a negative click at the contained
 object's centre at its own anchors and is co-prompted at the contained object's anchors. Ports
-of run_pilot_masks.contained / add_contained_negatives.
+of the research code's contained / add_contained_negatives.
 """
 
 from __future__ import annotations

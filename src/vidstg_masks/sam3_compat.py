@@ -121,8 +121,7 @@ def collect_sam2_scores(predictor, session_id) -> dict:
     """(fid, obj_id) -> per-frame confidence in [0, 1].
 
     Upstream's output payload drops the per-frame tracker score (constant
-    1.0 lands in mask_confidence — see reports/qualitative_review.md
-    [OPEN]); the real scores accumulate in
+    1.0 lands in mask_confidence); the real scores accumulate in
     tracker_metadata["obj_id_to_sam2_score_frame_wise"] during propagation.
     Scores are logits (~8 for confident tracks) mapped through a sigmoid —
     a monotone, UNCALIBRATED confidence; the add_prompt frame stores a

@@ -162,10 +162,9 @@ about 9 passes (1,700 / 192), each requeue
 adding one model-free restart per task. More tasks shorten the calendar time in proportion
 as long as the site runs them concurrently.
 
-[OPEN] Times on other GPUs: Roy measures them from `status` (GPU wall-hours) after the first
-pass on his cards; the A5000 numbers are the only ones measured. [OPEN] Whether the export
-job's defaults (2 h, 32 GB) hold for the full corpus: decided by the first full export; the
-export is re-runnable by hand.
+The A5000 numbers are the only ones measured; on another GPU, `status` reports the GPU
+wall-hours after a first pass. Whether the export job's defaults (2 h, 32 GB) hold for the full
+corpus is decided by the first full export; the export is re-runnable by hand.
 
 ## Portability
 

@@ -1,8 +1,8 @@
 """Quality gate over VidOR human keyframes: which keyframes may prompt SAM.
 
-Nathan's idea (2026-09-25): the point-to-mask repair redraws a mask from a box
+The idea (2026-09-25): the point-to-mask repair redraws a mask from a box
 and ten clicks at a frame SAM has never tracked, and that redraw is worse than
-the tracked mask it replaces (reports/sam_api_review.md). Instead of repairing,
+the tracked mask it replaces (research review of the SAM API). Instead of repairing,
 prompt only where a box will give a clean mask - the object fully in frame,
 not overlapped by another relation object, not moving fast, not blurred, not
 shrunk by leaving the frame - and let SAM's memory carry that mask to the
@@ -14,7 +14,7 @@ propagation, fits a 24 GB card.
 
 This module is CPU only (numpy + cv2, no torch) and self-contained so the
 portable pipeline can copy it. `edge_touches` and `motion_at` mirror
-src/box_anchor_covariates.py:56-100; `box_iou` mirrors run_pilot_masks.box_iou
+the research code; `box_iou` mirrors its box_iou
 (pinned equal by tests/test_anchor_quality.py).
 
 Flags per human keyframe (any flag = not a clean anchor):
@@ -43,7 +43,7 @@ clean keyframes for two thirds of the objects: the flags described VidOR
 in general, not the bad frames. [INFERRED] these cut-offs separate usable
 from unusable prompt frames; the 20-clip video review is the test.
 
-Fallback when an object has no clean keyframe (Nathan, 2026-09-25):
+Fallback when an object has no clean keyframe (2026-09-25):
   least-flagged  keep the keyframes with the fewest flags (an object whose box
                  always touches the border keeps its anchors); recorded as
                  hq.fallback = true with the flags that were ignored
@@ -265,7 +265,7 @@ def keyframe_metrics(plan: dict, thr: Thresholds,
 # -- policy -------------------------------------------------------------------
 
 def _thin(cands: list[int], ref: int, max_anchors: int) -> list[int]:
-    """plan_clip's thinning (run_pilot_masks.py:168-172): ref + first + last
+    """plan_clip's thinning (research code): ref + first + last
     always kept, the rest spread evenly."""
     if max_anchors and len(cands) > max_anchors:
         step = (len(cands) - 1) / (max_anchors - 1)
@@ -287,7 +287,7 @@ def _fill_gaps(plan: dict, t: int, rows: dict, kept: list[int], max_gap: int,
     Why: with the gate alone, an object that keeps 1-3 of its keyframes loses the mask
     for hundreds of frames (SAM's memory says "not present" until the next anchor),
     and 1,353 of the 2,265 frames lost on the rung-2 clips were beyond the first or
-    last kept anchor (reports/hq_anchor_arm.md, inspect_refusals.py, 2026-09-30).
+    last kept anchor (research run of 2026-09-30).
     """
     assert gap_fill in ("human", "any"), gap_fill
     anchors = sorted(kept)

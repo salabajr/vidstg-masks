@@ -173,7 +173,7 @@ thresholds. `both` costs twice the GPU time of `forward`. On the 20 review clips
 research run (69,729 object-frames): 217 refusals, 222 object-frames with nothing real in
 either pass, 176 masks from the backward pass, 180 masks trimmed, no two masks sharing a pixel;
 the earlier per-object rule with a box tie-break had left 282 overlapping pairs and taken
-one-pixel masks (`reports/merge_rules_v2.md` there).
+one-pixel masks.
 
 ## Records (`worker.clip_records`)
 

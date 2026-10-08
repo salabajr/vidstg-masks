@@ -163,7 +163,7 @@ vidstg-masks process --worklist outputs/smoke/worklist.json --campaign-root outp
 The worker prints one block per clip:
 
 ```
-[worker] shard 0/1 owner=local:node1:12345:0 units=1 anchor_policy=human_gap max_anchors=16 ... direction=forward ...
+[worker] shard 0/1 owner=local:node1:12345:0 units=1 anchor_policy=human_gap max_anchors=16 ... direction=both ...
 [worker] checkpoint checkpoints/sam3.1/sam3.1_multiplex.pt: sha256 0567debeec80ba4a… == pinned
 [clip] 6047872014 tids=2 frames=65 attempt=1
 == 6047872014 · 640x640 @ 10.00 fps · 65 frames · split val · policy human_gap
@@ -213,7 +213,7 @@ vidstg-masks status --worklist outputs/smoke/worklist.json --campaign-root outpu
 campaign /path/outputs/smoke · worklist outputs/smoke/worklist.json · 1 clips
   done 1 · failed 0 · pending 0
   masks 121 · refusals 0 · GPU wall-hours 0.014
-  run settings: anchor_policy=human_gap max_anchors=16 ... direction=forward ...
+  run settings: anchor_policy=human_gap max_anchors=16 ... direction=both ...
 ```
 
 The tables, with the integrity check:
@@ -264,16 +264,14 @@ Copy the example file and edit the paths; the file names the usual settings, and
 launcher variable is in [docs/SLURM.md](SLURM.md). Running the same command again on the same `CAMPAIGN_ROOT`
 resumes: finished clips are skipped, interrupted ones retried.
 
-The backward pass and the measured dispute tie-break (twice the GPU time, fewer frames
-without a mask):
+The defaults run both passes and the measured dispute tie-break. The forward pass alone, at
+half the GPU time and with more frames without a mask:
 
 ```bash
-DIRECTION=both DISPUTE_RULE=higher_score DISPUTE_SCORE=0.907 DISPUTE_WINNER=strong \
-    bash scripts/run_local.sh
+DIRECTION=forward DISPUTE_RULE=refuse bash scripts/run_local.sh
 ```
 
-or the same four flags on `process`: `--direction both --dispute-rule higher_score
---dispute-score 0.907 --dispute-winner strong`.
+or the same two flags on `process`: `--direction forward --dispute-rule refuse`.
 
 ## Troubleshooting
 

@@ -29,12 +29,11 @@ def _add_campaign(p: argparse.ArgumentParser) -> None:
 
 
 def _add_policy(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--direction", choices=("forward", "backward", "both"), default="forward",
-                   help="forward (default): the one SAM pass from the span start. both: that pass "
-                        "and one from the span end, merged frame by frame by the pixels rule "
-                        "(docs/PIPELINE.md, Backward pass); twice the GPU time, and the merge's "
-                        "treatment of disputed frames is still under eye review. backward: the "
-                        "one pass from the span end")
+    p.add_argument("--direction", choices=("forward", "backward", "both"), default="both",
+                   help="both (default): one SAM pass from the span start and one from the span end, "
+                        "merged frame by frame by the pixels rule (docs/PIPELINE.md, Backward pass). "
+                        "forward: the pass from the span start alone, half the GPU time. backward: "
+                        "the pass from the span end alone")
     p.add_argument("--agree-iou", type=float, default=0.3,
                    help="both: overlap at or above which the two masks of an object mostly match "
                         "(the forward one is preferred); below it the frame is a dispute and refused")
@@ -42,21 +41,21 @@ def _add_policy(p: argparse.ArgumentParser) -> None:
                    help="both: a mask under this many pixels is no mask")
     p.add_argument("--speck-ratio", type=float, default=0.1,
                    help="both: with two real masks, the one under this share of the other is no mask")
-    p.add_argument("--dispute-rule", choices=DISPUTE_RULES, default="refuse",
+    p.add_argument("--dispute-rule", choices=DISPUTE_RULES, default="higher_score",
                    help="both: what to do on a disputed frame (two real masks that do not overlap). "
-                        "refuse (default): no mask. higher_score: the pass with the higher presence score "
+                        "refuse: no mask. higher_score (default): the pass with the higher presence score "
                         "(mask_confidence) when that score is at least --dispute-score, else no mask (equal "
                         "scores: forward). forward_score: the forward mask when its score is at least "
-                        "--dispute-score, else no mask. Measured: higher_score 0.907 with --dispute-winner "
-                        "strong (docs/PIPELINE.md, Backward pass)")
+                        "--dispute-score, else no mask. The defaults are the measured setting, higher_score 0.907 "
+                        "with --dispute-winner strong (docs/PIPELINE.md, Backward pass)")
     p.add_argument("--dispute-score", type=float, default=None,
                    help="both: the presence-score threshold of --dispute-rule higher_score / forward_score "
-                        "(required with them, not allowed with refuse)")
-    p.add_argument("--dispute-winner", choices=DISPUTE_WINNERS, default="weak",
-                   help="both: how a tie-break mask meets its neighbours. weak (default): it yields the "
+                        "(default 0.907 with them, not allowed with refuse)")
+    p.add_argument("--dispute-winner", choices=DISPUTE_WINNERS, default="strong",
+                   help="both: how a tie-break mask meets its neighbours. weak: it yields the "
                         "pixels it shares with a neighbour whose pass was the only candidate (and a backward "
                         "win also yields to a neighbour's forward mask); left under --speck-floor it is "
-                        "refused. strong: it takes the pixels an agreed neighbour shares with it and is "
+                        "refused. strong (default): it takes the pixels an agreed neighbour shares with it and is "
                         "refused together with a neighbour that is the only candidate of the other pass")
     p.add_argument("--anchor-policy", choices=ANCHOR_POLICIES, default="human_gap",
                    help="human_gap (default): the VidOR box at every human keyframe, capped by "
@@ -342,9 +341,11 @@ def cmd_build_worklist(args) -> int:
 
 
 def _check_dispute(args) -> None:
-    from .merge import check_dispute_settings
+    from .merge import DEFAULT_DISPUTE_SCORE, check_dispute_settings
 
     try:
+        if args.dispute_rule != "refuse" and args.dispute_score is None:
+            args.dispute_score = DEFAULT_DISPUTE_SCORE       # a score rule without a threshold takes the measured one
         check_dispute_settings(args.dispute_rule, args.dispute_score, args.dispute_winner)
     except ValueError as e:
         raise SystemExit(f"--dispute-rule / --dispute-score / --dispute-winner: {e}")

@@ -182,9 +182,13 @@ def test_direction_flags_reach_the_worker(data, tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "process", stub)
     monkeypatch.setattr(worker, "process_one_main", stub)
     common = ["--worklist", str(c / "worklist.json"), "--campaign-root", str(c), "--checkpoint", str(c / "x.pt")]
-    assert run(["process", *common]) == 0                                  # default: the forward pass alone
-    assert (seen["direction"], seen["agree_iou"], seen["speck_floor"], seen["speck_ratio"], seen["dispute_score"]) == ("forward", 0.3, 20, 0.1, None)
-    assert (seen["dispute_rule"], seen["dispute_winner"]) == ("refuse", "weak")
+    assert run(["process", *common]) == 0                                  # defaults: both passes, the measured tie-break
+    assert (seen["direction"], seen["agree_iou"], seen["speck_floor"], seen["speck_ratio"], seen["dispute_score"]) == ("both", 0.3, 20, 0.1, 0.907)
+    assert (seen["dispute_rule"], seen["dispute_winner"]) == ("higher_score", "strong")
+    assert run(["process", *common, "--direction", "forward", "--dispute-rule", "refuse"]) == 0   # the forward pass alone
+    assert (seen["direction"], seen["dispute_rule"], seen["dispute_score"], seen["dispute_winner"]) == ("forward", "refuse", None, "strong")
+    assert run(["process", *common, "--dispute-rule", "forward_score"]) == 0                     # a score rule takes the default threshold
+    assert (seen["dispute_rule"], seen["dispute_score"]) == ("forward_score", 0.907)
     assert run(["process", *common, "--direction", "forward", "--agree-iou", "0.8", "--speck-floor", "30",
                 "--speck-ratio", "0.2", "--dispute-rule", "higher_score", "--dispute-score", "0.907",
                 "--dispute-winner", "strong"]) == 0

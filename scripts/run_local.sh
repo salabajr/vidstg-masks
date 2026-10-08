@@ -15,13 +15,13 @@ MAX_GAP="${MAX_GAP:-60}"
 GAP_FILL="${GAP_FILL:-human}"
 CONTAINED_NEGATIVES="${CONTAINED_NEGATIVES:-1}"
 # Passes and merge (README, Settings that change the masks); the dispute tie-break is off unless DISPUTE_RULE says otherwise.
-DIRECTION="${DIRECTION:-forward}"
+DIRECTION="${DIRECTION:-both}"
 AGREE_IOU="${AGREE_IOU:-0.3}"
 SPECK_FLOOR="${SPECK_FLOOR:-20}"
 SPECK_RATIO="${SPECK_RATIO:-0.1}"
-DISPUTE_RULE="${DISPUTE_RULE:-refuse}"
+DISPUTE_RULE="${DISPUTE_RULE:-higher_score}"
 DISPUTE_SCORE="${DISPUTE_SCORE:-}"
-DISPUTE_WINNER="${DISPUTE_WINNER:-weak}"
+DISPUTE_WINNER="${DISPUTE_WINNER:-strong}"
 policy_flags=()
 [[ "${KEEP_SPAN_EDGES:-0}" == "1" ]] && policy_flags+=(--keep-span-edges)
 # passed either way, so the variable decides: 1 -> on, anything else -> off

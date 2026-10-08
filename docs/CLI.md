@@ -128,8 +128,10 @@ data elsewhere than the node that built the worklist. `--python` chooses the int
 the subprocess (default: the current one).
 
 The policy and merge flags are described in [README, Settings](../README.md#settings-that-change-the-masks)
-and in [docs/PIPELINE.md](PIPELINE.md); `--dispute-score` is required with a score rule and
-not allowed with `refuse` (the command stops with a message otherwise). Every setting is written
+and in [docs/PIPELINE.md](PIPELINE.md); `--dispute-score` defaults to 0.907 with a score rule and
+is not allowed with `refuse` (the command stops with a message otherwise). The defaults are the
+measured pipeline: `--direction both --dispute-rule higher_score --dispute-score 0.907
+--dispute-winner strong`. Every setting is written
 into each `runs/<vid>.json`.
 
 Exit code 0 when no clip of this shard failed terminally, 1 otherwise (also on a bad shard index
@@ -138,7 +140,7 @@ or bad dispute settings, with a message), 99 when drained on a signal.
 ```bash
 vidstg-masks process --worklist outputs/val/worklist.json --campaign-root outputs/val \
     --checkpoint "$SAM31_CHECKPOINT" --shard-index 0 --shard-count 4 \
-    --direction both --dispute-rule higher_score --dispute-score 0.907 --dispute-winner strong
+    --direction forward --dispute-rule refuse        # the forward pass alone; omit for the defaults
 ```
 
 ## process-one

@@ -5,6 +5,13 @@ grouped by branch.
 
 ## Unreleased (branch `backward-merge`)
 
+**Defaults are the measured pipeline.** `--direction both`, `--dispute-rule higher_score`,
+`--dispute-score 0.907`, `--dispute-winner strong` are now the defaults of the CLI, the launch
+scripts and the Slurm array: an out-of-the-box run reproduces the setting of the 99-video
+VidSTG-val run of 2026-10-07. The forward pass alone is `--direction forward --dispute-rule
+refuse`, at half the GPU time. A score rule given without `--dispute-score` takes 0.907. The
+smoke clip 7639717122 gives the same 507 masks and no refusals under either setting.
+
 **Backward pass and the merge.** `--direction {forward,backward,both}` (default `forward`).
 `both` runs the same prompts a second time from the span end in its own SAM session and merges
 the two passes frame by frame with the pixels rule: a mask under `--speck-floor` (20 px) is no

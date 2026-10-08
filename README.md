@@ -15,6 +15,10 @@ VidOR videos                                                                 ─
                                                                                                     plus the ConCor Video tables
 ```
 
+> **Known limitations.** Outputs are model-generated, not human-verified. Clips with more
+> than 16 relation objects are refused, some VidOR videos require transcoding, and very
+> large `both` runs can exceed host memory. See [Limits](#limits) for details.
+
 **Contents:** [Pipeline overview](#pipeline-overview) · [Design principles](#design-principles) ·
 [Requirements](#requirements) · [Quick start](#quick-start) · [A whole split](#a-whole-split-or-everything) ·
 [Commands](#commands) · [Settings](#settings-that-change-the-masks) ·
@@ -32,7 +36,7 @@ VidOR videos                                                                 ─
    Frame indices always use native decode order.
 
 3. **Choose prompts.** For each object, prompt SAM with its VidOR box at human-annotated
-   frames only. Keyframes are initially thinned to at most 16
+   frames only; tracker boxes are never shown. Keyframes are initially thinned to at most 16
    across the span, starting from the one with the least overlap with other objects. The gap
    rule then adds human keyframes wherever consecutive prompts are more than 60 frames apart,
    so the final number of prompts can exceed 16 on long spans. When a large object's box

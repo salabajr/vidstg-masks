@@ -10,19 +10,19 @@ runs on a CPU-only machine (`tests/test_no_torch.py` checks that).
 
 | module | lines | owns | key functions |
 |---|---|---|---|
-| `cli.py` | 576 | the `vidstg-masks` command: the parser, one `cmd_*` function per subcommand, the dispute-settings check, the transcode re-queue | `main`, `cmd_doctor`, `cmd_build_worklist`, `cmd_process`, `cmd_process_one`, `cmd_status`, `cmd_export`, `cmd_export_concor`, `cmd_render`, `cmd_transcode`, `requeue_refused_unit` |
+| `cli.py` | 577 | the `vidstg-masks` command: the parser, one `cmd_*` function per subcommand, the dispute-settings check, the transcode re-queue | `main`, `cmd_doctor`, `cmd_build_worklist`, `cmd_process`, `cmd_process_one`, `cmd_status`, `cmd_export`, `cmd_export_concor`, `cmd_render`, `cmd_transcode`, `requeue_refused_unit` |
 | `datasets.py` | 251 | reading VidSTG and VidOR, the dataset roots (`Roots`), the known counts, finding a clip's video | `load_vidstg`, `build_vidor_index`, `load_vidor`, `boxes_for_tid`, `resolve_video`, `rebase_unit_paths`, `assert_known_counts`, `known_facts_check` |
 | `anchors.py` | 295 | the plan of a clip from the annotations alone: object set, spans, anchors, prompts as relative boxes, contained negatives | `plan_clip`, `apply_anchor_policy`, `prompts_for_plan`, `add_contained_negatives`, `in_span_fids`, `describe_plan` |
 | `anchor_quality.py` | 456 | the gap rule (`_fill_gaps`) shared by `human_gap` and `hq`, and the `hq` quality gate over keyframes (edge, overlap, motion, size, blur) | `human_gap_plan`, `apply_hq_policy`, `hq_plan_for`, `keyframe_metrics`, `Thresholds` |
 | `video.py` | 113 | probing and decoding checks, the H.264 transcode | `decode_check`, `is_black`, `probe_frame_count`, `probe_size`, `transcode_h264` |
 | `worker.py` | 810 | the worklist, the claims, the shard loop, the per-clip subprocess, pre-checks, the records of a clip, the run summary, status and ledger | `build_worklist`, `claim`, `process`, `subprocess_runner`, `process_one_main`, `run_clip`, `precheck_clip`, `plan_unit`, `clip_records`, `unit_status`, `campaign_status`, `ledger` |
-| `sam_session.py` | 179 | the SAM 3.1 session: build the predictor from the checkpoint, prompt every object, propagate, collect scores; the state-offload decision | `build_predictor`, `run_session`, `needs_state_offload`, `checkpoint_sha256`, `assert_checkpoint` |
+| `sam_session.py` | 183 | the SAM 3.1 session: build the predictor from the checkpoint, prompt every object, propagate, collect scores; the state-offload decision | `build_predictor`, `run_session`, `needs_state_offload`, `checkpoint_sha256`, `assert_checkpoint` |
 | `sam3_compat.py` | 202 | the patches the vendored sam3 commit needs for box-prompted video sessions (kwarg filtering, refined masks without detector cache, state offload, buffer purging, a device fix) | `apply_pvs_patches`, `collect_sam2_scores`, `purge_prompt_buffers`, `set_state_offload` |
-| `merge.py` | 320 | the merge of the forward and the backward pass: readings, the pixels rule, the dispute tie-break, the handover | `merge_passes`, `merge_frame`, `read_candidates`, `decide_pixels`, `tiebreak_pick`, `check_dispute_settings` |
-| `records.py` | 218 | the record contract: provenance fields, reason codes, COCO RLE, atomic JSONL and JSON, validation, the code commit | `make_record`, `base_provenance`, `rle_encode`, `rle_decode`, `write_jsonl_atomic`, `write_json_atomic`, `validate_record`, `git_commit` |
+| `merge.py` | 323 | the merge of the forward and the backward pass: readings, the pixels rule, the dispute tie-break, the handover | `merge_passes`, `merge_frame`, `read_candidates`, `decide_pixels`, `tiebreak_pick`, `check_dispute_settings` |
+| `records.py` | 220 | the record contract: provenance fields, reason codes, COCO RLE, atomic JSONL and JSON, validation, the code commit | `make_record`, `base_provenance`, `rle_encode`, `rle_decode`, `write_jsonl_atomic`, `write_json_atomic`, `validate_record`, `git_commit` |
 | `export.py` | 200 | the Parquet tables, the ledger, the manifest, the integrity check | `export_campaign`, `check_clip` |
 | `concor.py` | 457 | the ConCor Video export: records, tables, their validator's rules | `export_concor`, `relation_record`, `validate_record`, `read_captions` |
-| `render.py` | 152 | the QA video | `render_overlay` |
+| `render.py` | 155 | the QA video | `render_overlay` |
 | `__init__.py` | 14 | the pins: model name, SAM version, sam3 commit, checkpoint sha256 | `MODEL_NAME`, `SAM_VERSION`, `SAM3_COMMIT`, `CHECKPOINT_SHA256` |
 
 Around the package:
@@ -37,6 +37,9 @@ slurm/process_array.slurm        one array task: caches on node scratch, checkpo
 examples/*.env                   complete variable sets for a smoke test, the val split, the whole corpus
 tests/                           pytest, CPU only
 docs/                            this documentation
+pyproject.toml                   the package, its dependencies and the `vidstg-masks` entry point
+.env.example                     every environment variable, with comments
+CHANGELOG.md, CONTRIBUTING.md    what changed; tests, repository rules and the regression check
 ```
 
 ## The path of one clip
@@ -53,8 +56,8 @@ cli.cmd_process
             ├─ anchors.apply_anchor_policy   anchor_quality.human_gap_plan / hq_plan_for, after the pre-checks
             ├─ anchors.prompts_for_plan + anchors.add_contained_negatives
             ├─ sam_session.run_session(direction="forward")      masks + scores per frame and object
-            ├─ sam_session.run_session(direction="backward")     --direction both or backward only
-            ├─ merge.merge_passes                                 both only: one mask per object and frame, or a refusal
+            ├─ sam_session.run_session(direction="backward")     --direction both (the default) or backward
+            ├─ merge.merge_passes                                 both: one mask per object and frame, or a refusal
             ├─ worker.clip_records     records.make_record for every (tid, fid) with a box in the span
             └─ records.write_jsonl_atomic -> records/<vid>.jsonl; runs/<vid>.json
 ```

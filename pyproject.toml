@@ -4,9 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vidstg-masks"
-version = "0.1.0"
+version = "0.2.0"
 description = "SAM 3.1 mask tracks for the subject and object of every VidSTG relation, with provenance and a refusal path"
 readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.11"
 dependencies = [
   "numpy>=1.26,<2",

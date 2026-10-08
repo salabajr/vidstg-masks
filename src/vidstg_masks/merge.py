@@ -15,7 +15,8 @@ Reading the two candidates of one object on one frame (`read_candidates`):
   forward only                         -> forward, a strong vote   forward_only, backward_speck
   backward only                        -> backward, a strong vote  backward_only, forward_speck
   both, IoU >= agree_iou               -> forward preferred, either allowed (a weak vote)   agree
-  both, IoU < agree_iou                -> a real dispute: refused, disputed_mask            dispute
+  both, IoU < agree_iou                -> a real dispute: the tie-break below, else refused  dispute
+                                                                   (disputed_mask)
 
 Then per frame, across the objects (`decide_pixels`): each object takes its candidate; every
 pixel two written masks share goes to the object whose pass was the only candidate (the
@@ -27,24 +28,23 @@ object's backward mask when that touches nothing written, else it is refused
 (handed_over_speck). Inside one pass SAM gives a pixel to one object only, so after the
 handover no two written masks share a pixel.
 
-Measured on 20 VidSTG-val clips (69,729 object-frames; the research repo's
-reports/merge_rules_v2.md): 217 refusals (215 disputes, 2 conflicts), 222 object-frames with
+Measured on 20 VidSTG-val clips (69,729 object-frames; research run of 2026-10-05): 217 refusals (215 disputes, 2 conflicts), 222 object-frames with
 nothing real in either pass, 176 masks from the backward pass, 180 masks trimmed, 0 shared
 pixels; the earlier per-object rule with a box tie-break left 282 overlapping pairs.
 
-Optional tie-break for disputes (`dispute_rule`; the default `refuse` keeps every dispute refused).
+Tie-break for disputes (`dispute_rule`; `refuse` keeps every dispute refused, the default is
+`higher_score` at 0.907, below).
 `forward_score`: the forward mask is written when the forward pass's presence score (SAM's per-frame
 object score through a sigmoid, recorded as mask_confidence) is at least `dispute_score`.
 `higher_score`: the pass with the higher presence score is written when that score is at least
 `dispute_score` (equal scores: forward). Below the threshold the dispute stays refused. No box is
 read. `dispute_winner` says how the written mask meets the frame's other objects in decide_pixels:
-`weak` (default), a vote a strong partner trims, a weak backward vote also yielding to a weak forward
+`weak`, a vote a strong partner trims, a weak backward vote also yielding to a weak forward
 one (forward primary), and what is left under the floor is refused (handed_over_speck), never swapped
-for the other disputed mask; `strong`, the winner takes the pixels an agreed neighbour shares with it
+for the other disputed mask; `strong` (default), the winner takes the pixels an agreed neighbour shares with it
 (the neighbour is trimmed) and conflicts with another strong vote (passes_conflict).
 
-Measured on the 20 clips against Nathan's 16 firm frame labels (research branch, research/REPORT.md
-sections 11 to 14): higher_score at 0.907 with the strong winner agreed on 14, forward_score on 9,
+Measured on the 20 clips against the reviewer's 16 firm frame labels (research run of 2026-10-06): higher_score at 0.907 with the strong winner agreed on 14, forward_score on 9,
 refusing every dispute on 1. The strong winner is what keeps a backward win whole where an agreed
 forward neighbour had taken its pixels. 10 of the 16 decisions rest on a score margin under 0.005 and
 the threshold on one labeled hidden object (scores 0.81 / 0.86 against 0.956 and up where a mask was

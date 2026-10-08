@@ -6,7 +6,7 @@ torch and sam3 are imported lazily inside sam_session.py only, so every other mo
 works on a CPU-only login node.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 MODEL_NAME = "sam3.1-object-multiplex"
 SAM_VERSION = "3.1"

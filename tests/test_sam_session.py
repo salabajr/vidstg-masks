@@ -1,5 +1,5 @@
-"""The request sequence must stay identical to run_pilot_masks.run_multiplex_session (default
-path) in the research repo, so regenerated masks are comparable with existing runs."""
+"""The request sequence must stay identical to the research code this was ported from, so
+regenerated masks are comparable with existing runs."""
 
 import numpy as np
 import pytest

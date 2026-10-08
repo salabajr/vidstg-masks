@@ -62,7 +62,7 @@ vidstg-masks build-worklist [roots] --split {train,val,test,all} --campaign-root
 Selects the videos of the VidSTG file(s) named by `--split` (narrowed by `--vids`,
 `--vids-file`, `--limit`), asserts the dataset counts (`--no-assert-counts` for a deliberate
 subset of the data), and writes `<campaign>/worklist.json`: one unit per video with its
-relations, segment hull, object categories, `n_tids`, `n_frames`, and the absolute annotation
+relations, segment (earliest `used_segment` start to latest end), object categories, `n_tids`, `n_frames`, and the absolute annotation
 and video paths as resolved on this host; plus the roots and the counts (`units`, `by_split`,
 `frames`, `prop_frame_objects`, `relation_tids`, `video_missing`, `too_many_objects`). Prints the
 path and the counts as JSON. `--if-missing` keeps an existing worklist (the launchers use it to

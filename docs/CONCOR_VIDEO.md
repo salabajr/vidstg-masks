@@ -31,10 +31,10 @@ rows for their browser verifier), `run_ledger.csv`, `manifest.json`.
 | `text` | the relation's BCC-complete caption, from `--captions` (never the VidSTG sentence) |
 | `frame_ids` | every frame of the relation segment, `%06d` in native frame index space |
 | `frame_files` | `<vid>/%06d.jpg`, the convention for frames extracted with `-vsync 0`; no frames are written |
-| `tracklets[]` | `vidor-<tid>` for the subject and the object; `source` `sam3.1_main_referent` (their enum has no value for SAM masks prompted from ground-truth boxes; the origin is in `source_annotation_id` = `vidor:<vid>:<tid>` and in `vidstg_provenance`); `confidence` = mean `mask_confidence` over masked frames, `max_confidence` the max; `present_frames`; `masks` aligned to `frame_ids`, `null` outside the object's boxed span and on refusals |
+| `tracklets[]` | `vidor-<tid>` for the subject and the object; `source` `sam3.1_main_referent` (their enum has no value for SAM masks prompted from ground-truth boxes; the origin is in `source_annotation_id` = `vidor:<vid>:<tid>` and in `vidstg_provenance`); `confidence` = mean `mask_confidence` over masked frames, `max_confidence` the max (1.0 when no masked frame carries a score); `present_frames`; `masks` aligned to `frame_ids`, `null` outside the object's boxed span and on refusals |
 | `groups` | subject → `main_referent`, object → `context_entity`, identity = VidOR category, spans from `--captions` |
 | `span_links` | rebuilt from `groups` |
-| `disposition` | `complete_bcc` when both objects have a mask and a span; `incomplete_context` when the object has no mask (its tracklet is dropped and listed in `vidstg_refused_tracklets`); `missing_main_referent` when the subject has none |
+| `disposition` | `complete_bcc` when both objects have a mask and a span; `incomplete_context` when the object has no mask (its tracklet is dropped and listed in `vidstg_refused_tracklets`) or the caption gives it no span (its tracklet is dropped; the manifest's `disposition` counts show it); `missing_main_referent` when the subject has none |
 | `negative` | always false (VidSTG has no nonexistent-object samples) |
 | extra keys | `vidstg_provenance` per tracklet (model, checkpoint hash, prompt mode, anchor policy, anchors, refusal counts), `extraction.relation`, `sam_prompt_audit`, `pipeline`, `vidstg_refused_tracklets`; their schema allows additional keys |
 
@@ -53,9 +53,9 @@ main-referent group), so it appears in `tracklets.parquet` only, with an empty `
 ```
 
 Spans are half-open character offsets into `text`, one list per VidOR tid, and must slice
-the text exactly. A caption may name an entity only if it has a tracklet (BCC); the export
-drops nothing silently: a span for an object without masks leaves the record
-`incomplete_context`.
+the text exactly. A caption may name an entity only if it has a tracklet (BCC); a span for an
+object without masks leaves the record `incomplete_context`, and so does an object with masks
+but no span in the caption, whose tracklet is then left out of the record.
 
 ## Open points for the ConCor Video side
 

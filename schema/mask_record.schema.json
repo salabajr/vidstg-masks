@@ -42,7 +42,9 @@
         "anchor_policy": {"enum": ["human", "human_gap", "hq"]},
         "hq": {"type": ["object", "null"], "description": "hq policy only: keyframe gate results"},
         "gap": {"type": ["object", "null"], "description": "human_gap policy only: coverage-rule results (max_gap, gap_fill, gap_fills, n_gap_fills, baseline_fids); null for an object never prompted"},
-        "contained_negatives": {"type": ["object", "null"], "description": "--contained-negatives only: neg_clicks per frame, co_prompt_fids, co_prompt_tracker_fids, n_neg_clicks; null for an object never prompted"}
+        "contained_negatives": {"type": ["object", "null"], "description": "--contained-negatives only: neg_clicks per frame, co_prompt_fids, co_prompt_tracker_fids, n_neg_clicks; null for an object never prompted"},
+        "direction": {"enum": ["backward", "bidirectional"], "description": "absent on a forward run; bidirectional for a --direction both run"},
+        "merge": {"type": ["object", "null"], "description": "--direction both, prompted objects only: rule, decision, source, iou, disputed, forward, backward, agree_iou, speck_floor_px, speck_ratio, dispute_rule, dispute_score, dispute_winner, tiebreak; handover and refused_reason when set (docs/OUTPUT_FORMAT.md)"}
       }
     },
     "mask_confidence": {"type": ["number", "null"], "description": "sigmoid of the per-frame tracker score; 1.0 on prompted frames; uncalibrated; null on refusals"},

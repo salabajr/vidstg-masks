@@ -36,7 +36,7 @@ def _add_policy(p: argparse.ArgumentParser) -> None:
                         "the pass from the span end alone")
     p.add_argument("--agree-iou", type=float, default=0.3,
                    help="both: overlap at or above which the two masks of an object mostly match "
-                        "(the forward one is preferred); below it the frame is a dispute and refused")
+                        "(the forward one is preferred); below it the frame is a dispute, settled by --dispute-rule")
     p.add_argument("--speck-floor", type=int, default=20,
                    help="both: a mask under this many pixels is no mask")
     p.add_argument("--speck-ratio", type=float, default=0.1,

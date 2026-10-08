@@ -36,7 +36,8 @@ Optional: `ANCHOR_POLICY` (human_gap), `MAX_ANCHORS` (16), `HQ_FALLBACK` (least-
 `DISPUTE_SCORE` (0.907; the threshold of `higher_score` / `forward_score`), `DISPUTE_WINNER`
 (strong) — the defaults are the measured tie-break; the forward pass alone is `DIRECTION=forward
 DISPUTE_RULE=refuse` (README, Settings that change the masks), `VIDS`, `VIDS_FILE`, `LIMIT`,
-`WORKLIST_PATH` (point the workers at a subset worklist inside the same campaign),
+`WORKLIST_PATH` (point the workers at a subset worklist inside the same campaign), `CAPTIONS`
+(a captions.jsonl for `export-concor`, see README, ConCor Video),
 `ROOTS_FROM_ENV` (1 adds `--roots-from-env` to `process`, see Resuming), `ASSERT_COUNTS`
 (0 adds `--no-assert-counts` to `build-worklist`), `DOCTOR_FLAGS`, `EXPORT_PARTITION`
 (= `SLURM_PARTITION`), `EXPORT_TIME_LIMIT` (02:00:00), `EXPORT_MEMORY` (32G).
@@ -72,10 +73,10 @@ same log file and continues from the campaign state on disk. A clip still runnin
 kills the task at the limit, or under preemption or `scancel`, is recorded in
 `errors/<vid>.json` with `"interrupted": true`, stays `pending`, and is retried on the next
 pass, 5 attempts in total. It is not counted as failed. The lead should exceed the longest clip:
-from the Cost table (README), a clip takes about 1.5 min plus 0.4 s per frame per object, so
-a lead of L seconds covers a clip up to about (L - 90) / 0.4 frame-objects (4,275 at the
-default); raise `SIGNAL_LEAD_SECONDS` when a unit's `n_frames x n_tids` in `worklist.json`
-is larger than that.
+from the Cost table (README), a clip takes about 1.5 min plus, per video frame, 0.24 s plus
+0.06 s per object for the two passes, so a lead of L seconds covers a clip of k objects up to
+about (L - 90) / (0.24 + 0.06 k) frames (3,600 frames of a 4-object clip at the default);
+raise `SIGNAL_LEAD_SECONDS` when a unit's `n_frames` in `worklist.json` is larger than that.
 
 ## Watching progress
 
@@ -90,7 +91,7 @@ and runs on the login node; `submit_slurm.sh` prints the exact command when it e
 `$CAMPAIGN_ROOT/slurm_logs/worker-<array>_<task>.out` is one file per task across requeues
 (`--open-mode=append`); its lines start `[clip]`, `[committed]`, `[interrupted]`, `[refused]`,
 `[oom]`, `[failed]`, `[drain]`. `$CAMPAIGN_ROOT/submissions.txt` gets one line per
-`submit_slurm.sh` run, `<utc time> worker_array=<id> export=<id> split=<split> workers=<n> direction=<d> dispute=<rule>/<score or none>/<winner>`,
+`submit_slurm.sh` run, `<utc time> worker_array=<id> export=<id> split=<split> workers=<n> direction=<d> dispute=<rule>/<score or default>/<winner>`,
 for `squeue -j` and `sacct -j`.
 
 ## Resuming
@@ -135,10 +136,11 @@ scratch or project storage. The worker also sets
 
 ## Sizing
 
-Measured on one RTX A5000 24 GB (README, Cost): about 1.5 min of model load per clip plus
-about 0.4 s per frame per object; 451 val clips about 92 GPU-h; all 602 val videos about
-120 GPU-h; all 6,770 videos about 1,250-3,100 GPU-h depending on object counts; peak VRAM
-6-19 GB per clip. Host memory per task stayed under 20 GB in our forward-only runs; the video
+Measured on one RTX A5000 24 GB (README, Cost), with the defaults (two passes): about 1.5 min
+of model load per clip plus, per video frame, 0.24 s plus 0.06 s per object; 99 val videos took
+22.8 GPU-h in the sessions and 42 task-hours allocated. Applied to the worklists: all 602 val
+videos about 80 GPU-h (about 150 task-hours allocated), all 6,770 videos about 900 GPU-h (about
+1,700 allocated); `DIRECTION=forward` roughly halves these; peak VRAM 6-18 GB per clip. Host memory per task stayed under 20 GB in our forward-only runs; the video
 is decoded to CPU memory (`offload_video_to_cpu`), so long 1080p clips need more, and a
 `--direction both` run of a clip over about 1,500 frames (tracker state offloaded to the CPU,
 two passes) takes tens of GB. Where the site does not enforce `--mem` (Slurm's `AllocMem` stays
@@ -152,10 +154,11 @@ retried by the next task that claims it (up to five times), so such a kill costs
 node where that is a RAM-backed tmpfs the copy costs 3.5 GB of the same memory, so set
 `STAGE_CHECKPOINT=0` there (`df -h /tmp` on the node says `tmpfs` when it is).
 
-`counts.prop_frame_objects` in `worklist.json` is the campaign's total frame-object count:
-multiply by 0.4 s and add 1.5 min per unit for the GPU-hour budget. One array pass of
-`NUM_WORKERS=16` tasks at `TIME_LIMIT=12:00:00` is 192 GPU-h, so the val split fits in one
-pass and the full corpus needs 7 to 17 passes (1,250 / 192 to 3,100 / 192), each requeue
+For the GPU-hour budget, sum over the units of `worklist.json` `n_frames` x (0.24 s + 0.06 s x
+`n_tids`), add 1.5 min per unit, and allow about 1.8x for idle waiting and retries (the measured
+ratio of allocated to session time). One array pass of `NUM_WORKERS=16` tasks at
+`TIME_LIMIT=12:00:00` is 192 GPU-h, so the val split fits in one pass and the full corpus needs
+about 9 passes (1,700 / 192), each requeue
 adding one model-free restart per task. More tasks shorten the calendar time in proportion
 as long as the site runs them concurrently.
 

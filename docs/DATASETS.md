@@ -17,6 +17,8 @@ $VIDSTG_ROOT/annotations/val_annotations.json
 $VIDSTG_ROOT/annotations/test_annotations.json
 ```
 
+(the three files directly under `$VIDSTG_ROOT` are found as well)
+
 `--split` selects which of these files the worklist is drawn from (`all` = every video).
 The split name is written into each record as `split`.
 

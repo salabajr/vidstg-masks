@@ -123,8 +123,8 @@ vidstg-masks build-worklist --split val --campaign-root outputs/smoke --vids 763
 }
 ```
 
-`prop_frame_objects` is frames times objects summed over the clips: the number that drives the
-GPU time (about 0.4 s each per pass). `--split` is `train`, `val`, `test` or `all`; `--vids`
+`prop_frame_objects` is frames times objects summed over the clips; the GPU time grows with both
+(about 0.24 s plus 0.06 s per object, per video frame, for the two passes; README, Cost). `--split` is `train`, `val`, `test` or `all`; `--vids`
 or `--vids-file` picks videos, `--limit` caps the count. The dataset counts are asserted
 first; a partial copy of the dataset needs `--no-assert-counts`.
 
@@ -176,7 +176,7 @@ The worker prints one block per clip:
 
 The first clip takes about 1.5 minutes longer than the rest: the model is loaded in every
 per-clip subprocess. `ms/f` is the session time (prompts and propagation) per frame, `GB` the peak VRAM; `72s` is the whole subprocess, model load included.
-With `--direction both` a `merge:` line counts what the merge did on the clip.
+By default (`--direction both`) a `merge:` line counts what the merge did on the clip.
 
 ## 6. Look at what came out
 

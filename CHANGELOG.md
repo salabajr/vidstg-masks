@@ -3,7 +3,7 @@
 Newest first. Versions are the `version` in `pyproject.toml`; between releases the entries are
 grouped by branch.
 
-## Unreleased (branch `backward-merge`)
+## Unreleased
 
 **Defaults are the measured pipeline.** `--direction both`, `--dispute-rule higher_score`,
 `--dispute-score 0.907`, `--dispute-winner strong` are now the defaults of the CLI, the launch
@@ -12,7 +12,7 @@ VidSTG-val run of 2026-10-07. The forward pass alone is `--direction forward --d
 refuse`, at half the GPU time. A score rule given without `--dispute-score` takes 0.907. The
 smoke clip 7639717122 gives the same 507 masks and no refusals under either setting.
 
-**Backward pass and the merge.** `--direction {forward,backward,both}` (default `forward`).
+**Backward pass and the merge.** `--direction {forward,backward,both}` (the default is `both`, above).
 `both` runs the same prompts a second time from the span end in its own SAM session and merges
 the two passes frame by frame with the pixels rule: a mask under `--speck-floor` (20 px) is no
 mask, a real mask under `--speck-ratio` (0.1) of the other pass's is no mask, two real masks
@@ -22,8 +22,9 @@ same pixels refuse both. No box is read, no two masks on a frame share a pixel. 
 `not_tracked`, `disputed_mask`, `speck_mask`, `passes_conflict`, `handed_over_speck`. Every record
 of a `both` run carries `prompt_payload.merge`; every `runs/<vid>.json` the merge counts.
 
-**Dispute tie-break.** `--dispute-rule {refuse,forward_score,higher_score}` (default `refuse`),
-`--dispute-score T`, `--dispute-winner {weak,strong}` (default `weak`): on a disputed frame,
+**Dispute tie-break.** `--dispute-rule {refuse,forward_score,higher_score}`,
+`--dispute-score T`, `--dispute-winner {weak,strong}` (the defaults are `higher_score`, 0.907 and
+`strong`, above): on a disputed frame,
 write the pass whose presence score (`mask_confidence`) clears `T`, as a weak or a strong vote
 in the handover. The measured setting, `higher_score` at 0.907 with the strong winner, agreed
 with the reviewer's frame labels on 14 of 16 firm cases on the 20 review clips
@@ -61,11 +62,13 @@ dispute settings.
 **Docs.** `docs/SLURM.md` Sizing: host memory of a `both` run (about 14 MB per frame-object with
 the tracker state offloaded), capping the tasks per node with `CPUS_PER_TASK` where `--mem` is
 not enforced, `STAGE_CHECKPOINT` on a RAM-backed `/tmp`. New `docs/GETTING_STARTED.md`,
-`docs/CLI.md`, `docs/CODE_STRUCTURE.md`, this changelog; the README rewritten around them.
+`docs/CLI.md`, `docs/CODE_STRUCTURE.md`, this changelog; the README rewritten around them. The cost
+figures (README, `docs/SLURM.md`) come from the 99-video run: 0.24 s plus 0.06 s per object per
+video frame for the two passes, applied to the val and full-corpus worklists.
 
 Tests: 126.
 
-## 0.1.0 (branch `main`)
+## 0.1.0
 
 The first release: worklist, claims, the shard worker with a fresh subprocess per clip,
 pre-checks, the `human`, `human_gap` (default) and `hq` anchor policies, contained negatives,

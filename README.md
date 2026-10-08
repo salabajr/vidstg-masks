@@ -155,7 +155,7 @@ vidstg-masks render --vid 7639717122 --campaign-root outputs/smoke --side-by-sid
 ```
 
 This clip has 9 relations and 5 objects. You should see 507 masks and no refusals, about
-half a second per frame once the model is loaded, and `export` reporting `"ok": true`.
+half a second per frame per pass once the model is loaded, and `export` reporting `"ok": true`.
 `outputs/smoke/overlays/7639717122.mp4` shows the original frames on the left and the masks,
 boxes and labels on the right.
 
@@ -228,11 +228,7 @@ from 343 to 137 compared with plain box prompts. The backward pass and merge, in
 default dispute tie-break (`higher_score` at 0.907 with the strong winner: 14 of 16 firm
 labels), are described in [docs/PIPELINE.md](docs/PIPELINE.md#backward-pass-and-the-merge---direction).
 These defaults are the setting of the 99-video VidSTG-val run of 2026-10-07. The forward pass
-alone is
-
-```bash
---direction forward --dispute-rule refuse
-```
+alone is `--direction forward --dispute-rule refuse`.
 
 Look at `render --side-by-side` before trusting a new set of clips: the threshold rests on
 few labeled frames.
@@ -286,21 +282,23 @@ See [docs/CODE_STRUCTURE.md](docs/CODE_STRUCTURE.md) for the full module map.
 
 ## Cost
 
-With the defaults (two passes) the val split (602 videos) is about **240 GPU-hours** on one
-RTX A5000 and the full corpus about **2,500–6,200 GPU-hours**; `--direction forward` halves both.
+With the defaults (two passes) the val split (602 videos) is about **80 GPU-hours** of
+segmentation on one RTX A5000, about 150 task-hours as allocated by Slurm, and the full corpus
+(6,770 videos) about **900 GPU-hours**, about 1,700 allocated. `--direction forward` roughly
+halves both.
 
-Measured in eager mode, per pass:
+Measured on 99 VidSTG-val videos with the defaults (eager mode, 179,933 video frames, 243,750
+boxed object-frames): 22.8 GPU-hours inside the SAM sessions and 42 task-hours allocated to the
+array, model loads, idle waiting and retries included. The split and corpus figures above apply
+the measured per-frame time to their worklists.
 
-| item | value |
+| item | value, both passes |
 |---|---|
-| segmentation | about 0.4 s per frame per object |
+| segmentation | about 0.24 s per video frame plus 0.06 s per object (a 3-object clip: about 0.4 s per frame) |
 | model load | about 1.5 min per clip |
-| peak VRAM | 6 to 19 GB per clip |
+| peak VRAM | 6 to 18 GB per clip (17.8 GB on the 99 videos) |
 
-The default `--direction both` runs two passes; `--direction forward` halves the segmentation
-time and the GPU-hours. The merge itself runs on the CPU in seconds. Measured on 99 VidSTG-val videos with `--direction both`
-(243,750 object-frames, peak VRAM 17.8 GB): 22.8 GPU-hours inside the SAM sessions and
-42 task-hours allocated to the array including idle waiting and retries.
+The merge itself runs on the CPU in seconds.
 
 Host memory of a `both` run grows with frames × objects (about 14 MB per frame-object with the
 tracker state offloaded to the CPU); [docs/SLURM.md](docs/SLURM.md#sizing) covers node sizing.

@@ -36,9 +36,10 @@ annotation is reported with the pattern searched) and asserts the dataset counts
 writing anything: VidSTG records per requested split (train 36,202 / val 3,996 / test 4,610;
 44,808 in all) and 7,835 VidOR annotation files. A mismatch raises and no worklist is written;
 `--no-assert-counts` skips the check for a partial copy. `worklist.json` then carries one
-unit per video (relations, segment hull, categories, `n_tids`, `n_frames`), the dataset
+unit per video (relations, segment hull, categories, `n_tids`, `n_frames`, `n_records`), the dataset
 roots, each unit's absolute `vidor_ann` and `video_path` as resolved on the building node,
-and `counts` (`units`, `by_split`, `video_missing`, `too_many_objects`, `prop_frame_objects`).
+and `counts` (`units`, `by_split`, `video_missing`, `too_many_objects`, `relation_tids`, `frames`,
+`prop_frame_objects`).
 
 `process` and `process-one` read the roots and paths from the worklist by default, so a
 worker needs no data variables in its environment. `--roots-from-env` replaces the frozen

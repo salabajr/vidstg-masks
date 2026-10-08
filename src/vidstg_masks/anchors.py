@@ -1,8 +1,8 @@
 """Clip planning from annotations alone (CPU): object set, spans, anchor keyframes.
 
 Ported from the research code. Object set = union of subject_tid /
-object_tid over all used_relations of the video's VidSTG records. Clip span = interval
-hull of the used_segments; per-tid span = clip span intersected with the tid's VidOR box
+object_tid over all used_relations of the video's VidSTG records. Clip span = earliest
+used_segment start to latest used_segment end; per-tid span = clip span intersected with the tid's VidOR box
 presence. Anchors are VidOR human keyframes (generated == 0) inside the tid span; the
 reference anchor is the human keyframe whose box is most discriminative against the
 other selected tids (minimal max box-IoU at the same frame, tie-break earliest fid).

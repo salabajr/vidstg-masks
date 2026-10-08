@@ -124,7 +124,8 @@ vidstg-masks build-worklist --split val --campaign-root outputs/smoke --vids 763
 ```
 
 `prop_frame_objects` is frames times objects summed over the clips; the GPU time grows with both
-(about 0.24 s plus 0.06 s per object, per video frame, for the two passes; README, Cost). `--split` is `train`, `val`, `test` or `all`; `--vids`
+(about 0.24 s plus 0.06 s per object per frame per pass, twice that for the default two passes;
+README, Cost). `--split` is `train`, `val`, `test` or `all`; `--vids`
 or `--vids-file` picks videos, `--limit` caps the count. The dataset counts are asserted
 first; a partial copy of the dataset needs `--no-assert-counts`.
 
@@ -135,17 +136,22 @@ vidstg-masks plan --worklist outputs/smoke/worklist.json --vids 7639717122
 ```
 
 ```
-== 6047872014 · 640x640 @ 10.00 fps · 65 frames · split val · policy human_gap
-   video: /data/vidor/video/0010/6047872014.mp4
-   relations (4): 1 kiss 0 | 1 hug 0 | 0 hug 1 | 0 kiss 1
-   segment union [0, 64] -> propagation span [0, 64] (~65 frames)
-   tid 0 (adult): span [0, 64] · 6/6 anchors · ref fid 0 (max IoU vs others 0.000) · gap rule (max gap 60, fill human): +0 fills over baseline [0, 21, 43, 53, 58, 64]
-   tid 1 (adult): span [9, 64] · 13/13 anchors · ref fid 9 (max IoU vs others 0.000) · gap rule (max gap 60, fill human): +0 fills over baseline [9, 12, 15, 18, 21, 26, 32, 37, 43, 48, 53, 58, 64]
-   contained negatives: 0 negative clicks, 0 co-prompts (0 at tracker boxes)
+== 7639717122 · 320x240 @ 15.00 fps · 124 frames · split val · policy human_gap
+   video: /data/vidor/video/1100/7639717122.mp4
+   relations (9): 1 behind 2 | 0 ride 2 | 0 above 2 | 1 push 2 | 4 ride 3 | 2 beneath 0 | 4 above 3 | 4 in_front_of 1 | 3 beneath 4
+   segment union [0, 123] -> propagation span [0, 123] (~124 frames)
+   tid 0 (child): span [0, 123] · 10/10 anchors · ref fid 123 (max IoU vs others 0.172) · gap rule (max gap 60, fill human): +0 fills over baseline [0, 25, 49, 61, 74, 98, 104, 110, 116, 123]
+   tid 1 (child): span [0, 123] · 10/10 anchors · ref fid 0 (max IoU vs others 0.146) · gap rule (max gap 60, fill human): +0 fills over baseline [0, 25, 49, 55, 61, 74, 98, 110, 116, 123]
+   tid 2 (toy): span [0, 123] · 11/11 anchors · ref fid 0 (max IoU vs others 0.249) · gap rule (max gap 60, fill human): +0 fills over baseline [0, 25, 49, 55, 61, 74, 98, 104, 110, 116, 123]
+   tid 3 (bicycle): span [44, 97] · 10/10 anchors · ref fid 44 (max IoU vs others 0.113) · gap rule (max gap 60, fill human): +0 fills over baseline [44, 46, 49, 55, 61, 67, 74, 79, 85, 97]
+   tid 4 (child): span [43, 123] · 16/16 anchors · ref fid 43 (max IoU vs others 0.039) · gap rule (max gap 60, fill human): +0 fills over baseline [43, 46, 47, 48, 49, 55, 61, 67, 74, 80, 86, 98, 104, 110, 116, 123]
+   contained negatives: 2 negative clicks, 0 co-prompts (0 at tracker boxes)
+   tid 2: 2 negative clicks at fids ['49', '55'] · co-prompted at [] (tracker boxes: [])
 ```
 
-(the example is another clip, with two objects). One line per object: its span, how many of
-its human keyframes become anchors, the reference anchor and why, and what the gap rule added.
+One line per object: its span, how many of its human keyframes become anchors, the reference
+anchor and why, and what the gap rule added; then the negative clicks (here the toy's box lies
+inside a child's box at two anchors, so that child is told "not here" at the toy's centre).
 
 ## 5. Run one clip on a GPU
 
@@ -160,7 +166,9 @@ vidstg-masks process --worklist outputs/smoke/worklist.json --campaign-root outp
     --checkpoint checkpoints/sam3.1/sam3.1_multiplex.pt --shard-index 0 --shard-count 1
 ```
 
-The worker prints one block per clip:
+The worker prints one block per clip. The block below, and the files and status in step 6, are
+from a smaller clip run with the defaults, 6047872014 (65 frames, two adults); for 7639717122
+expect 507 masks and no refusals.
 
 ```
 [worker] shard 0/1 owner=local:node1:12345:0 units=1 anchor_policy=human_gap max_anchors=16 ... direction=both ...
@@ -231,10 +239,10 @@ ConCor Video tables next to them ([docs/CONCOR_VIDEO.md](CONCOR_VIDEO.md)).
 And the video, for your eyes:
 
 ```bash
-vidstg-masks render --vid 6047872014 --campaign-root outputs/smoke --side-by-side
+vidstg-masks render --vid 7639717122 --campaign-root outputs/smoke --side-by-side
 ```
 
-writes `outputs/smoke/overlays/6047872014.mp4`: the original frames on the left, on the right
+writes `outputs/smoke/overlays/7639717122.mp4`: the original frames on the left, on the right
 the masks tinted per object, each object's VidOR box (thick at a human keyframe, thin at a
 tracker box), a label `tid:category` at each box, `(no mask)` after it where the object has a
 box but no mask, and a banner strip under the frame with the relations. Without `--side-by-side`

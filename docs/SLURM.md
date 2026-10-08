@@ -73,10 +73,12 @@ same log file and continues from the campaign state on disk. A clip still runnin
 kills the task at the limit, or under preemption or `scancel`, is recorded in
 `errors/<vid>.json` with `"interrupted": true`, stays `pending`, and is retried on the next
 pass, 5 attempts in total. It is not counted as failed. The lead should exceed the longest clip:
-from the Cost table (README), a clip takes about 1.5 min plus, per video frame, 0.24 s plus
-0.06 s per object for the two passes, so a lead of L seconds covers a clip of k objects up to
-about (L - 90) / (0.24 + 0.06 k) frames (3,600 frames of a 4-object clip at the default);
-raise `SIGNAL_LEAD_SECONDS` when a unit's `n_frames` in `worklist.json` is larger than that.
+from the Cost table (README), a clip takes about 1.5 min plus, per frame per pass, 0.24 s plus
+0.06 s per object, so with the default two passes a lead of L seconds covers a clip of k objects
+up to about (L - 90) / (0.48 + 0.12 k) frames (1,800 frames of a 4-object clip at the default;
+twice that forward-only); raise `SIGNAL_LEAD_SECONDS` when a unit's `n_frames` in
+`worklist.json` is larger than that. A longer clip costs a retry, not masks: the two longest
+clips of the 99-video run (2,697 frames each) took 42 and 98 minutes.
 
 ## Watching progress
 
@@ -137,10 +139,10 @@ scratch or project storage. The worker also sets
 ## Sizing
 
 Measured on one RTX A5000 24 GB (README, Cost), with the defaults (two passes): about 1.5 min
-of model load per clip plus, per video frame, 0.24 s plus 0.06 s per object; 99 val videos took
+of model load per clip plus, per frame per pass, 0.24 s plus 0.06 s per object; 99 val videos took
 22.8 GPU-h in the sessions and 42 task-hours allocated. Applied to the worklists: all 602 val
-videos about 80 GPU-h (about 150 task-hours allocated), all 6,770 videos about 900 GPU-h (about
-1,700 allocated); `DIRECTION=forward` roughly halves these; peak VRAM 6-18 GB per clip. Host memory per task stayed under 20 GB in our forward-only runs; the video
+videos about 180 GPU-h (about 320 task-hours allocated), all 6,770 videos about 2,100 GPU-h
+(about 3,700 allocated); `DIRECTION=forward` roughly halves these; peak VRAM 6-18 GB per clip. Host memory per task stayed under 20 GB in our forward-only runs; the video
 is decoded to CPU memory (`offload_video_to_cpu`), so long 1080p clips need more, and a
 `--direction both` run of a clip over about 1,500 frames (tracker state offloaded to the CPU,
 two passes) takes tens of GB. Where the site does not enforce `--mem` (Slurm's `AllocMem` stays
@@ -154,11 +156,11 @@ retried by the next task that claims it (up to five times), so such a kill costs
 node where that is a RAM-backed tmpfs the copy costs 3.5 GB of the same memory, so set
 `STAGE_CHECKPOINT=0` there (`df -h /tmp` on the node says `tmpfs` when it is).
 
-For the GPU-hour budget, sum over the units of `worklist.json` `n_frames` x (0.24 s + 0.06 s x
-`n_tids`), add 1.5 min per unit, and allow about 1.8x for idle waiting and retries (the measured
-ratio of allocated to session time). One array pass of `NUM_WORKERS=16` tasks at
-`TIME_LIMIT=12:00:00` is 192 GPU-h, so the val split fits in one pass and the full corpus needs
-about 9 passes (1,700 / 192), each requeue
+For the GPU-hour budget, sum over the units of `worklist.json` `n_frames` x 2 passes x (0.24 s +
+0.06 s x `n_tids`), add 1.5 min per unit, and allow about 1.8x for idle waiting and retries (the
+measured ratio of allocated to session time). One array pass of `NUM_WORKERS=16` tasks at
+`TIME_LIMIT=12:00:00` is 192 GPU-h, so the val split needs about two passes and the full corpus
+about 20 (3,700 / 192), each requeue
 adding one model-free restart per task. More tasks shorten the calendar time in proportion
 as long as the site runs them concurrently.
 

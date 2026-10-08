@@ -282,19 +282,19 @@ See [docs/CODE_STRUCTURE.md](docs/CODE_STRUCTURE.md) for the full module map.
 
 ## Cost
 
-With the defaults (two passes) the val split (602 videos) is about **80 GPU-hours** of
-segmentation on one RTX A5000, about 150 task-hours as allocated by Slurm, and the full corpus
-(6,770 videos) about **900 GPU-hours**, about 1,700 allocated. `--direction forward` roughly
+With the defaults (two passes) the val split (602 videos) is about **180 GPU-hours** of
+segmentation on one RTX A5000, about 320 task-hours as allocated by Slurm, and the full corpus
+(6,770 videos) about **2,100 GPU-hours**, about 3,700 allocated. `--direction forward` roughly
 halves both.
 
-Measured on 99 VidSTG-val videos with the defaults (eager mode, 179,933 video frames, 243,750
-boxed object-frames): 22.8 GPU-hours inside the SAM sessions and 42 task-hours allocated to the
+Measured on 99 VidSTG-val videos with the defaults (eager mode, 179,933 frame passes over
+90,009 video frames, 243,750 boxed object-frames): 22.8 GPU-hours inside the SAM sessions and 42 task-hours allocated to the
 array, model loads, idle waiting and retries included. The split and corpus figures above apply
 the measured per-frame time to their worklists.
 
-| item | value, both passes |
+| item | value |
 |---|---|
-| segmentation | about 0.24 s per video frame plus 0.06 s per object (a 3-object clip: about 0.4 s per frame) |
+| segmentation | about 0.24 s plus 0.06 s per object, per frame per pass (a 3-object clip: about 0.4 s per frame per pass, 0.85 s for the two passes) |
 | model load | about 1.5 min per clip |
 | peak VRAM | 6 to 18 GB per clip (17.8 GB on the 99 videos) |
 
@@ -307,6 +307,10 @@ tracker state offloaded to the CPU); [docs/SLURM.md](docs/SLURM.md#sizing) cover
 
 - The outputs are model masks with provenance, not human-verified masks.
 - Clips with more than 16 relation objects are refused (9 of 6,770 videos).
+- Masks are written inside each video's VidSTG window only: from the earliest `used_segment`
+  start to the latest end over the video's sentences. Frames outside it get no record even
+  where the object has a box (301 of the 6,770 videos have such frames, measured during
+  development); the QA video labels those boxes `(no mask)`.
 - About 2.8 percent of VidOR videos decode as black frames under OpenCV, which SAM's loader
   uses. Those clips are refused with `decode_black`; `vidstg-masks transcode --worklist ...
   --campaign-root ...` re-encodes them to H.264 into `VIDOR_TRANSCODED_ROOT` without changing

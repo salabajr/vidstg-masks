@@ -34,8 +34,8 @@ Flags per human keyframe (any flag = not a clean anchor):
   blur     Laplacian variance of the grey crop inside the box is below
            blur_abs_min, or below blur_rel_min x the object's own median
 
-Thresholds were set on 2026-09-25 from the metric distributions over the 16
-CALIB rung-2 clips only (rule 2; src/report_hq_plan.py prints them), chosen
+Thresholds were set on 2026-09-25 from the metric distributions over 16
+VidSTG-val calibration clips (never the test split), chosen
 so that a typical object keeps about half of its keyframes and 97 of 104
 objects keep at least one clean keyframe. The first attempt (edge on any
 border contact, overlap > 0.25, motion > 0.02, blur ratio < 0.5) left 0
@@ -286,8 +286,8 @@ def _fill_gaps(plan: dict, t: int, rows: dict, kept: list[int], max_gap: int,
 
     Why: with the gate alone, an object that keeps 1-3 of its keyframes loses the mask
     for hundreds of frames (SAM's memory says "not present" until the next anchor),
-    and 1,353 of the 2,265 frames lost on the rung-2 clips were beyond the first or
-    last kept anchor (research run of 2026-09-30).
+    and 1,353 of the 2,265 frames lost on the 20 VidSTG-val review clips were beyond the
+    first or last kept anchor (research run of 2026-09-30).
     """
     assert gap_fill in ("human", "any"), gap_fill
     anchors = sorted(kept)

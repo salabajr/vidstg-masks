@@ -94,7 +94,7 @@ def read_vids_file(path: Path) -> list[str]:
 
 def unit_records(unit: dict) -> list[dict]:
     """VidSTG-shaped records rebuilt from a worklist unit (one per relation, all sharing the
-    unit's segment hull), so plan_clip reproduces the plan without the VidSTG files."""
+    unit's segment), so plan_clip reproduces the plan without the VidSTG files."""
     so = [{"tid": int(t), "category": c} for t, c in unit["cats"].items()]
     return [{"used_relation": {"subject_tid": s, "predicate": p, "object_tid": o},
              "used_segment": {"begin_fid": unit["segment"][0], "end_fid": unit["segment"][1]},

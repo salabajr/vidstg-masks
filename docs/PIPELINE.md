@@ -24,8 +24,11 @@ Sections: [Unit of work](#unit-of-work) · [Worklist](#worklist-cpu-workerbuild_
 
 One VidOR video. Its VidSTG records (6.6 on average) are joined on `vid`; the object set
 is the union of `subject_tid` and `object_tid` over all their `used_relation`s; the clip span
-is the interval hull of their `used_segment`s. Per object, the span is the clip span
-intersected with the object's VidOR box presence. One SAM 3.1 Object Multiplex session
+runs from the earliest `used_segment` start to the latest `used_segment` end over them (the
+VidSTG input window; `temporal_gt` is not used). Per object, the span is the clip span
+intersected with the object's VidOR box presence. Frames outside the clip span get no record
+even where the object has a box (301 of the 6,770 videos have such frames, measured during
+development; `render` labels those boxes `(no mask)`). One SAM 3.1 Object Multiplex session
 segments every object of the clip together, so the masks of one frame are disjoint.
 
 ## Worklist (CPU, `worker.build_worklist`)
@@ -36,7 +39,7 @@ annotation is reported with the pattern searched) and asserts the dataset counts
 writing anything: VidSTG records per requested split (train 36,202 / val 3,996 / test 4,610;
 44,808 in all) and 7,835 VidOR annotation files. A mismatch raises and no worklist is written;
 `--no-assert-counts` skips the check for a partial copy. `worklist.json` then carries one
-unit per video (relations, segment hull, categories, `n_tids`, `n_frames`, `n_records`), the dataset
+unit per video (relations, segment, categories, `n_tids`, `n_frames`, `n_records`), the dataset
 roots, each unit's absolute `vidor_ann` and `video_path` as resolved on the building node,
 and `counts` (`units`, `by_split`, `video_missing`, `too_many_objects`, `relation_tids`, `frames`,
 `prop_frame_objects`).
@@ -137,7 +140,7 @@ pass and merges them frame by frame (`merge.merge_passes`, the pixels rule; no b
    left, it is the only candidate: a strong vote. If both are left and their overlap is at or
    above `--agree-iou` (0.3), the masks mostly match: the forward one is preferred, either is
    allowed (a weak vote). If both are left and they do not overlap, the frame is a dispute and
-   is refused (`disputed_mask`, rule 7). Nothing real in either pass is `empty_mask` (both empty)
+   is refused (`disputed_mask`: a refusal rather than a doubtful mask). Nothing real in either pass is `empty_mask` (both empty)
    or `speck_mask`.
 2. The objects of a frame are decided together. Each takes its candidate; every pixel that two
    written masks share goes to the object whose pass was the only candidate, and the object that
@@ -169,8 +172,8 @@ human keyframe, has none):
 the reading (`rule`), the `decision` (`forward`, `backward`, `refused`, `none`), the `source`
 pass, the overlap of the two masks, each candidate's size, share inside the VidOR box (for the
 reader; unused) and confidence, the `handover` when pixels moved, the `refused_reason`, and the
-thresholds. `both` costs twice the GPU time of `forward`. On the 20 review clips of the
-research run (69,729 object-frames): 217 refusals, 222 object-frames with nothing real in
+thresholds. `both` costs twice the GPU time of `forward`. Measured during development on the
+20 review clips (69,729 object-frames): 217 refusals, 222 object-frames with nothing real in
 either pass, 176 masks from the backward pass, 180 masks trimmed, no two masks sharing a pixel;
 the earlier per-object rule with a box tie-break had left 282 overlapping pairs and taken
 one-pixel masks.
@@ -253,7 +256,7 @@ human keyframe counts as clean, so a fill is simply the human keyframe nearest t
 the largest gap (or a tracker box with `--gap-fill any`). It needs no video, keeps the human
 policy's reference anchor and its `prompt_mode` (`pvs_box_multianchor`), and records the
 fills in `prompt_payload.gap` (`max_gap`, `gap_fill`, `gap_fills`, `n_gap_fills`,
-`baseline_fids`). In the research pipeline it was the ablation that asked whether the gate
+`baseline_fids`). During development it was the ablation that asked whether the gate
 adds anything over consistent spacing alone.
 
 `--anchor-policy human`: the same keyframes and reference anchor without the coverage rule
@@ -301,10 +304,10 @@ human_gap: the same prompts as before. Every `runs/<vid>.json` records `anchor_p
   frame interval. Both tids are segmented.
 - **tid** — VidOR trajectory id: one object of one video. Its records form one mask track.
 - **fid** — frame index in native decode order. Never a timestamp; never rescaled.
-- **span** — per tid: the clip's segment hull (interval hull of its records' `used_segment`s)
-  intersected with the frames where the tid has a VidOR box. Every boxed frame in the span
+- **span** — per tid: the clip's segment (from the earliest `used_segment` start to the latest
+  end over its records) intersected with the frames where the tid has a VidOR box. Every boxed frame in the span
   gets exactly one record.
-- **prop_span** — the hull of all tid spans of a clip: the interval SAM propagates over
+- **prop_span** — from the first to the last frame of any tid span of a clip: the interval SAM propagates over
   (from its start in a forward pass, from its end in a backward pass).
 - **anchor** — a frame at which an object is prompted with its VidOR box (as two corner
   points); at most `--max-anchors` (16) per object before the gap rule puts keyframes back.

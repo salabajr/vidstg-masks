@@ -63,7 +63,9 @@ the tracker state offloaded), capping the tasks per node with `CPUS_PER_TASK` wh
 not enforced, `STAGE_CHECKPOINT` on a RAM-backed `/tmp`. New `docs/GETTING_STARTED.md`,
 `docs/CLI.md`, `docs/CODE_STRUCTURE.md`, this changelog; the README rewritten around them. The cost
 figures (README, `docs/SLURM.md`) come from the 99-video run: 0.24 s plus 0.06 s per object per
-video frame for the two passes, applied to the val and full-corpus worklists.
+frame per pass, twice that for the two passes, applied to the val and full-corpus worklists (val
+about 180 GPU-hours, corpus about 2,100). `examples/smoke_one_clip.env` names the val clip
+7639717122 (it named a train clip under `SPLIT=val`, which built an empty worklist).
 
 Tests: 126.
 
